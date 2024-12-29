@@ -5,12 +5,14 @@ body {
     background-color: black;
     color: white;
 }
+
 #map {
     position: absolute;
     top: 0;
     bottom: 0;
     width: 100%;
 }
+
 #loading-screen {
     position: absolute;
     top: 0;
@@ -41,21 +43,25 @@ body {
     width: 80%;
     height: 80%;
     background-color: rgba(0, 0, 0, 0.8);
-    display: flex; /* Changed from 'display: none' to 'display: flex' */
-    flex-direction: column; /* Added this line to stack items vertically */
+    display: flex;
+    /* Changed from 'display: none' to 'display: flex' */
+    flex-direction: column;
+    /* Added this line to stack items vertically */
     justify-content: center;
     align-items: center;
     z-index: 1001;
 }
 
-#settings-panel > div {
+#settings-panel>div {
     padding: 20px;
-    border-radius: 20px; /* More rounded corners */
+    border-radius: 20px;
+    /* More rounded corners */
 }
 
 button {
     padding: 10px 20px;
-    background-color: #007BFF; /* Bootstrap primary color */
+    background-color: #007BFF;
+    /* Bootstrap primary color */
     color: white;
     border: none;
     border-radius: 5px;
@@ -65,7 +71,8 @@ button {
 }
 
 button:hover {
-    background-color: #0056b3; /* Darker shade of the primary color */
+    background-color: #0056b3;
+    /* Darker shade of the primary color */
 }
 
 button:focus {
@@ -79,7 +86,8 @@ input {
     border-radius: 5px;
     font-size: 16px;
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    margin-right: 10px; /* Add some space to the right of the input */
+    margin-right: 10px;
+    /* Add some space to the right of the input */
 }
 
 input:focus {

@@ -9,5 +9,5 @@ window.addEventListener("load", () => {
 	updateWatches();
 	updateCountdown();
 
-    updateWeatherAlerts();
+	updateWeatherAlerts();
 });

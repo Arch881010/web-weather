@@ -2,6 +2,12 @@
 
 // Initialize the map
 
+const log_features = ["Flood"];
+console.info(
+	"Logging these features (warnings):",
+	(log_features || ["None"]).toString()
+);
+
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
 // Add state borders to the map
@@ -17,6 +23,7 @@ function addCountyBorders() {
 					opacity: config.opacity.countyBorders, // low opactiy
 					fillOpacity: 0, // Make the polygon fill transparent
 				},
+				id: "county-borders",
 			})
 				.addTo(map)
 				.bringToFront();
@@ -38,20 +45,42 @@ function formatExpirationTime(expirationTime) {
 	const expirationDate = new Date(expirationTime);
 	const now = new Date();
 	const timeDiff = expirationDate - now;
-	const minutes = Math.floor(timeDiff / 60000);
-	const seconds = Math.floor((timeDiff % 60000) / 1000);
-	return `${minutes}m ${seconds}s`;
+
+	const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+	const hours = Math.floor(
+		(timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+	);
+	const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+	const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+
+	let formattedTime = "";
+	if (days > 0) {
+		formattedTime += `${days}d `;
+	}
+	if (hours > 0 || days > 0) {
+		formattedTime += `${hours}h `;
+	}
+	formattedTime += `${minutes}m ${seconds}s`;
+
+	return formattedTime.trim();
 }
 
 // Function to get the popup text based on the feature
 function getPopupText(feature) {
 	let weatherEvent = feature.properties.event;
 
-	if (weatherEvent.includes("Tornado")) {
+	if (log_features.matchesAny(weatherEvent)) {
 		console.log(feature);
 	}
 
 	return asText(getSevereStorm(feature));
+}
+
+function timePassedAsSeconds(time) {
+	const now = new Date();
+	const timeDiff = now - time;
+	const seconds = Math.floor(timeDiff / 1000);
+	return seconds;
 }
 
 // Function to fetch and update weather alerts
@@ -189,6 +218,7 @@ function updateCountdown(force) {
 	let timeLeft = 60;
 	window.timeUntilNextUpdate = timeLeft;
 	window.countdownIsRunning = true;
+	window.lastUpdate = new Date();
 
 	setInterval(() => {
 		timeLeft = window.timeUntilNextUpdate;
@@ -329,11 +359,6 @@ function asText(json) {
 	return popupContent;
 }
 
-function matchesAny(text) {
-	for (let i = 0; i < declaredAlerts.length; i++) {
-		if (text.includes(declaredAlerts[i])) {
-			return true;
-		}
-	}
-	return false;
+function forceUpdate() {
+	window.timeUntilNextUpdate = 1;
 }

@@ -1,3 +1,5 @@
+/** @format */
+
 function convertToText(text) {
 	if (text.includes("Tornado Watch")) {
 		return "Tornado Watch";
