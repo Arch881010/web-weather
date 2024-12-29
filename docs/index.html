@@ -1,0 +1,97 @@
+<!-- @format -->
+
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Weather Map</title>
+		<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+		<link rel="stylesheet" href="./css/index.css" />
+	</head>
+	<body>
+		<div id="loading-screen">Loading...</div>
+		<div id="map"></div>
+		<!-- Settings Panel -->
+		<div id="settings-panel" class="settings-content" style="display: none">
+			<h2>Settings</h2>
+			<div>
+				<h3>General</h3>
+				<label>
+					Save Settings between sessions?
+					<input type="checkbox" id="save-settings" />
+				</label>
+			</div>
+			<div>
+				<h3>Opacity</h3>
+				<label>
+					Radar:
+					<input
+						type="number"
+						id="opacity-radar"
+						min="0"
+						max="100"
+						step="1"
+						value="100" />%
+					<span class="info-icon" title="100% completely visible, 0% invisible"
+						><i class="fas fa-info-circle"></i
+					></span>
+				</label>
+				<br />
+				<label>
+					Polygon Fill:<br>
+					<input
+						type="number"
+						id="opacity-polygon-fill"
+						min="0"
+						max="100"
+						step="1"
+						value="100" />%
+					<span class="info-icon" title="100% completely visible, 0% invisible"
+						><i class="fas fa-info-circle"></i
+					></span>
+				</label>
+				<br />
+				<label>
+					Polygon:
+					<input
+						type="number"
+						id="opacity-polygon"
+						min="0"
+						max="100"
+						step="1"
+						value="100" />%
+					<span class="info-icon" title="100% completely visible, 0% invisible"
+						><i class="fas fa-info-circle"></i
+					></span>
+				</label>
+				<br />
+				<label>
+					County Borders:
+					<input
+						type="number"
+						id="opacity-county-borders"
+						min="0"
+						max="100"
+						step="1"
+						value="100" />%
+					<span class="info-icon" title="100% completely visible, 0% invisible"
+						><i class="fas fa-info-circle"></i
+					></span>
+				</label>
+				<br />
+			</div>
+			<button id="close-settings">Close</button>
+		</div>
+		<script src="./js/config.js"></script>
+		<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+		<script src="./js/toTitleCasePrototype.js"></script>
+		<script src="./js/colors.js"></script>
+		<script src="./js/map.js"></script>
+		<script src="./js/taskbar.js"></script>
+		<script src="./js/onLoad.js" defer></script>
+	</body>
+</html>

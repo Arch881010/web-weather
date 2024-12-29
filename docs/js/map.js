@@ -1,82 +1,6 @@
 /** @format */
 
-//TODO: Move this to a separate file
-
-String.prototype.toTitleCase = function () {
-	// https://stackoverflow.com/a/196991
-	return this.replace(
-		/\w\S*/g,
-		(text) => text.charAt(0).toUpperCase() + text.substring(1).toLowerCase()
-	);
-};
-
-function convertToText(text) {
-	if (text.includes("Tornado Watch")) {
-		return "Tornado Watch";
-	}
-	if (text.includes("Severe Thunderstorm Watch")) {
-		return "Severe Thunderstorm Watch";
-	}
-	if (text.includes("Tornado")) {
-		return "Tornado";
-	}
-	if (text.includes("Severe Thunderstorm")) {
-		return "Severe Thunderstorm";
-	}
-	if (text.includes("Flood")) {
-		return "Flood";
-	}
-	if (text.includes("Heat")) {
-		return "Heat";
-	}
-	if (text.includes("Winter Storm")) {
-		return "Winter Storm";
-	}
-	if (text.includes("Fire")) {
-		return "Fire";
-	}
-	if (text.includes("Fog")) {
-		return "Fog";
-	}
-	if (text.includes("Marine")) {
-		return "Marine";
-	}
-	if (text.includes("Weather Statement")) {
-		return "Weather Statement";
-	}
-	return "Default";
-}
-
-const alertColors = {
-	"Severe Thunderstorm": "#ff9900",
-	"Tornado": "#ff0000",
-	"Flood": "#00ff00",
-	"Weather Statement": "#add8e6",
-	"Marine": "#E0B0FF",
-	"Tornado Watch": "#0000ff",
-	"Severe Thunderstorm Watch": "#0000ff",
-	"Flood Watch": "#0000ff",
-	"Default": "#ffffff",
-};
-
-const declaredAlerts = [
-	"Tornado",
-	"Severe Thunderstorm",
-	"Special Weather Statement",
-];
-
-// end
-
 // Initialize the map
-
-const config = {
-	opacity: {
-		radar: 0.5,
-		polygon_fill: 0,
-		polygon: 1,
-		countyBorders: 0.1,
-	},
-};
 
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
@@ -141,9 +65,11 @@ function updateWeatherAlerts() {
 			// Sort alerts
 			data.features.sort((a, b) => {
 				const order = [
-					"Tornado",
-					"Severe Thunderstorm",
+					"Flood",
+					"Marine",
 					"Special Weather Statement",
+					"Severe Thunderstorm",
+					"Tornado",
 				];
 				const aIndex = order.findIndex((type) =>
 					a.properties.event.includes(type)
@@ -186,7 +112,9 @@ function updateWeatherAlerts() {
 					}
 				},
 				id: "weather-alerts",
-			}).addTo(map).bringToFront();
+			})
+				.addTo(map)
+				.bringToFront();
 		});
 }
 
@@ -249,20 +177,29 @@ function updateRadarLayer() {
 }
 
 // Function to update the countdown timer
-function updateCountdown() {
+function updateCountdown(force) {
+	force = force || false;
+	if (window.countdownIsRunning && !force) {
+		return console.warn("The countdown is already active, skipping.");
+	}
 	const countdownElement = document.getElementById("countdown");
 	let timeLeft = 60;
+	window.timeUntilNextUpdate = timeLeft;
+	window.countdownIsRunning = true;
 
 	setInterval(() => {
+		timeLeft = window.timeUntilNextUpdate;
 		timeLeft -= 1;
 		countdownElement.innerText = `Next update in: ${timeLeft}s`;
 
 		if (timeLeft <= 0) {
 			timeLeft = 60;
+			window.timeUntilNextUpdate = timeLeft;
 			updateWeatherAlerts();
 			updateRadarLayer();
 			updateWatches();
 		}
+		window.timeUntilNextUpdate = timeLeft;
 	}, 1000);
 }
 
@@ -281,15 +218,6 @@ countdownDiv.onAdd = function () {
 	return div;
 };
 countdownDiv.addTo(map);
-
-// Initial fetch and update
-setTimeout(() => {
-	updateRadarLayer();
-	addCountyBorders();
-	updateWeatherAlerts();
-	updateWatches();
-	updateCountdown();
-}, 500);
 
 function getSevereStorm(feature) {
 	let weatherEvent = feature.properties.event;

@@ -1,0 +1,19 @@
+{
+  "name": "web-weather",
+  "version": "1.0.0",
+  "main": "static",
+  "scripts": {
+    "test": "echo \"static website, please run locally without using cmd\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arch881010/web-weather.git"
+  },
+  "author": "Arch881010",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Arch881010/web-weather/issues"
+  },
+  "homepage": "https://github.com/Arch881010/web-weather#readme",
+  "description": ""
+}
