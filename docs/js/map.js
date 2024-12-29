@@ -9,6 +9,7 @@ function addCountyBorders() {
 	fetch("./json/counties.json")
 		.then((response) => response.json())
 		.then((data) => {
+			clearLayers(["county-borders"]);
 			L.geoJSON(data, {
 				style: {
 					color: "#D3D3D3", // Light gray for border color
@@ -91,6 +92,7 @@ function updateWeatherAlerts() {
 					return {
 						color: "black", // Outer border color
 						weight: 5, // Outer border width
+						opacity: config.opacity.polygon, // Outer border opacity
 						fillOpacity: 0, // Make the polygon fill transparent
 					};
 				},
@@ -103,6 +105,7 @@ function updateWeatherAlerts() {
 					return {
 						color: getColor(feature.properties.event), // Border color
 						weight: 3, // Border width
+						opacity: config.opacity.polygon, // Outer border opacity
 						fillOpacity: config.opacity.polygon_fill, // Make the polygon fill transparent
 					};
 				},

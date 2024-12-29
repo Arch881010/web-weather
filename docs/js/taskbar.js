@@ -57,6 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		config.opacity.countyBorders = opacityCountyBorders;
 
         window.timeUntilNextUpdate = 0;
+        addCountyBorders();
 	};
 
 	// Load settings from local storage
