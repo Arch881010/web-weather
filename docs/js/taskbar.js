@@ -56,7 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		config.opacity.polygon = opacityPolygon;
 		config.opacity.countyBorders = opacityCountyBorders;
 
-		window.timeUntilNextUpdate = 0;
+		window.timeUntilNextUpdate = 1;
 		addCountyBorders();
 	};
 

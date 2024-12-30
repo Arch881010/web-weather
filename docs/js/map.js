@@ -2,7 +2,7 @@
 
 // Initialize the map
 
-const log_features = ["Flood"];
+const log_features = ["Marine"];
 console.info(
 	"Logging these features (warnings):",
 	(log_features || ["None"]).toString()
@@ -11,14 +11,28 @@ console.info(
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
 // Add state borders to the map
+map.on("zoomend", addCountyBorders);
+window.countyBordersShown = false;
 function addCountyBorders() {
+	if (map.getZoom() < 9) {
+		if (window.countyBordersShown) {
+			console.info("Removing county borders to the map.");
+			clearLayers(["county-borders"]);
+		}
+		window.countyBordersShown = false;
+		return;
+	}
+	if (window.countyBordersShown) {
+		return;
+	}
+	console.info("Adding county borders to the map.");
+	window.countyBordersShown = true;
 	fetch("./json/counties.json")
 		.then((response) => response.json())
 		.then((data) => {
-			clearLayers(["county-borders"]);
 			L.geoJSON(data, {
 				style: {
-					color: "#D3D3D3", // Light gray for border color
+					color: getColor("county"), // Light gray for border color
 					weight: 3, // Border width
 					opacity: config.opacity.countyBorders, // low opactiy
 					fillOpacity: 0, // Make the polygon fill transparent
@@ -34,11 +48,6 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
 	attribution:
 		'&copy; <a href="https://carto.com/attributions">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }).addTo(map);
-
-// Define a function to get the color based on the type of the alert
-function getColor(eventType) {
-	return alertColors[convertToText(eventType)];
-}
 
 // Function to format the expiration time
 function formatExpirationTime(expirationTime) {
@@ -92,15 +101,9 @@ function updateWeatherAlerts() {
 	})
 		.then((response) => response.json())
 		.then((data) => {
-			// Sort alerts
+			// Sort alerts and watches
 			data.features.sort((a, b) => {
-				const order = [
-					"Flood",
-					"Marine",
-					"Special Weather Statement",
-					"Severe Thunderstorm",
-					"Tornado",
-				];
+				const order = ["Warning", "Advisory", "Watch"];
 				const aIndex = order.findIndex((type) =>
 					a.properties.event.includes(type)
 				);
@@ -108,10 +111,11 @@ function updateWeatherAlerts() {
 					b.properties.event.includes(type)
 				);
 				return (
-					(aIndex === -1 ? order.length : aIndex) -
-					(bIndex === -1 ? order.length : bIndex)
+					(bIndex === -1 ? -1 : order.length - bIndex) -
+					(aIndex === -1 ? -1 : order.length - aIndex)
 				);
 			});
+
 			// Clear existing layers
 			clearLayers(["weather-alerts", "weather-alerts-border"]);
 
@@ -135,7 +139,7 @@ function updateWeatherAlerts() {
 						color: getColor(feature.properties.event), // Border color
 						weight: 3, // Border width
 						opacity: config.opacity.polygon, // Outer border opacity
-						fillOpacity: config.opacity.polygon_fill, // Make the polygon fill transparent
+						fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
 					};
 				},
 				onEachFeature: function (feature, layer) {
@@ -147,37 +151,6 @@ function updateWeatherAlerts() {
 			})
 				.addTo(map)
 				.bringToFront();
-		});
-}
-
-// Function to fetch and update the watches
-function updateWatches() {
-	fetch("https://api.weather.gov/alerts/active?event=Watch", {
-		headers: {
-			"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
-		},
-	})
-		.then((response) => response.json())
-		.then((data) => {
-			// Clear existing watch layers
-			clearLayers(["weather-watches"]);
-
-			// Add the watch layer
-			L.geoJSON(data, {
-				style: function (feature) {
-					return {
-						color: getColor(feature.properties.event), // Border color
-						weight: 3, // Border width
-						fillOpacity: config.opacity.polygon_fill, // Make the polygon fill transparent
-					};
-				},
-				onEachFeature: function (feature, layer) {
-					if (feature.properties) {
-						layer.bindPopup(asText(getDefaults(feature)));
-					}
-				},
-				id: "watch-alerts",
-			}).addTo(map);
 		});
 }
 
@@ -230,7 +203,6 @@ function updateCountdown(force) {
 			window.timeUntilNextUpdate = timeLeft;
 			updateWeatherAlerts();
 			updateRadarLayer();
-			updateWatches();
 		}
 		window.timeUntilNextUpdate = timeLeft;
 	}, 1000);
