@@ -1,5 +1,11 @@
 /** @format */
 
+const mapLoadedEvent = new Event("mapLoaded", {
+	bubbles: true,
+	cancelable: true,
+	composed: true,
+});
+
 // Event listener to handle tab visibility change
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState != "visible") return;
@@ -9,14 +15,17 @@ document.addEventListener("visibilitychange", () => {
 
 // Hide the loading screen once the map is fully loaded
 document.onreadystatechange = () => {
-	const loadingScreen = document.getElementById("loading-screen");
-	loadingScreen.style.display = "none";
 	updateRadarLayer();
 	addCountyBorders();
 	updateCountdown();
 
-	updateWeatherAlerts();
+	updateWeatherAlerts(true);
 };
+
+document.addEventListener("mapLoaded", () => {
+	const loadingScreen = document.getElementById("loading-screen");
+	loadingScreen.style.display = "none";
+});
 
 // Event listener when a variable is updated
 

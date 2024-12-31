@@ -101,7 +101,9 @@ function timePassedAsSeconds(time) {
 }
 
 // Function to fetch and update weather alerts
-function updateWeatherAlerts() {
+function updateWeatherAlerts(firstTime) {
+	firstTime = firstTime || false;
+	const doIt = firstTime;
 	fetch("https://api.weather.gov/alerts/active", {
 		headers: {
 			"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
@@ -164,6 +166,9 @@ function updateWeatherAlerts() {
 			})
 				.addTo(map)
 				.bringToFront();
+			if (doIt) {
+				document.dispatchEvent(mapLoadedEvent);
+			}
 		});
 }
 
@@ -334,11 +339,7 @@ function asText(json) {
 			}
 		}
 	} else {
-		popupContent += `This storm has weakened below severe limits.\nThis warning will expire soon.`;
-	}
-
-	if (json.isDefault) {
-		popupContent += `<br><br><em>Click for more information (to be added)</em>`;
+		popupContent += `This storm has weakened below severe limits.\nThis warning will expire soon.\n<br>`;
 	}
 
 	return popupContent;
