@@ -38,6 +38,7 @@ function addCountyBorders() {
 					fillOpacity: 0, // Make the polygon fill transparent
 				},
 				id: "county-borders",
+				interactive: false,
 			})
 				.addTo(map)
 				.bringToFront();
@@ -76,13 +77,20 @@ function formatExpirationTime(expirationTime) {
 
 // Function to get the popup text based on the feature
 function getPopupText(feature) {
-	let weatherEvent = feature.properties.event;
+    let weatherEvent = feature.properties.event;
 
-	if (log_features.matchesAny(weatherEvent)) {
-		console.log(feature);
-	}
+    if (log_features.matchesAny(weatherEvent)) {
+        console.log(feature);
+    }
 
-	return asText(getSevereStorm(feature));
+    const popupContent = `
+        ${asText(getSevereStorm(feature))}
+        <button id="show-alert-text" style="margin-top: 10px; padding: 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">
+            Show Alert Text
+        </button>
+    `;
+
+    return popupContent;
 }
 
 function timePassedAsSeconds(time) {
@@ -146,6 +154,11 @@ function updateWeatherAlerts() {
 					if (feature.properties) {
 						layer.bindPopup(getPopupText(feature));
 					}
+
+					layer.on("popupopen", function () {
+						console.log("Popup opened for feature:", feature);
+						window.cachedAlertText = getAlertText(feature);
+					});
 				},
 				id: "weather-alerts",
 			})
