@@ -24,7 +24,11 @@ document.onreadystatechange = () => {
 
 document.addEventListener("mapLoaded", () => {
 	const loadingScreen = document.getElementById("loading-screen");
-	loadingScreen.style.display = "none";
+	loadingScreen.style.transition = "opacity 1.5s ease-out";
+	loadingScreen.style.opacity = "0";
+	setTimeout(() => {
+		loadingScreen.style.display = "none";
+	}, 1500); // Match the duration of the CSS transition
 });
 
 // Event listener when a variable is updated
