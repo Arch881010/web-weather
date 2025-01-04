@@ -26,24 +26,22 @@ jobs:
           else
             VERSION="1.0.0"
           fi
-          echo "::set-output name=version::$VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Get recent commit message
         id: get_commit
         run: |
           RECENT_COMMIT=$(git log -1 --pretty=%B | head -n 1)
-          echo "::set-output name=recent_commit::$RECENT_COMMIT"
+          echo "RECENT_COMMIT=$RECENT_COMMIT" >> $GITHUB_ENV
 
       - name: Generate version.json
         run: |
-          VERSION=${{ steps.get_version.outputs.version }}
-          RECENT_COMMIT=${{ steps.get_commit.outputs.recent_commit }}
           echo "Generating version.json"
           cat <<EOF > docs/json/version.json
           {
-              "number": "$VERSION",
+              "number": "${{ env.VERSION }}",
               "time-updated": "$(date)",
-              "recent-commit": "$RECENT_COMMIT"
+              "recent-commit": "${{ env.RECENT_COMMIT }}"
           }
           EOF
           echo "version.json generated successfully"
