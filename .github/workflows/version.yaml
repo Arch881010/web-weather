@@ -1,0 +1,32 @@
+name: Update Version
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+
+jobs:
+  update-version:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Run makeVersion.bash script
+        run: ./scripts/makeVersion.bash
+
+      - name: Commit and push changes
+        run: |
+          git add .
+          git commit -m "(Chore): Update Version"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
