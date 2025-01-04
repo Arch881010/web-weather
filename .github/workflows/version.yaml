@@ -1,14 +1,12 @@
 name: Update Version
 
 on:
-  pull_request:
-    types: [opened, reopened, synchronize]
+  push:
     branches:
       - main
 
 jobs:
   update-version:
-    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
@@ -20,13 +18,40 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-      - name: Run makeVersion.bash script
-        run: ./scripts/makeVersion.bash
+      - name: Get version number
+        id: get_version
+        run: |
+          if [ -f VERSION ]; then
+            VERSION=$(cat VERSION)
+          else
+            VERSION="1.0.0"
+          fi
+          echo "::set-output name=version::$VERSION"
+
+      - name: Get recent commit message
+        id: get_commit
+        run: |
+          RECENT_COMMIT=$(git log -1 --pretty=%B | head -n 1)
+          echo "::set-output name=recent_commit::$RECENT_COMMIT"
+
+      - name: Generate version.json
+        run: |
+          VERSION=${{ steps.get_version.outputs.version }}
+          RECENT_COMMIT=${{ steps.get_commit.outputs.recent_commit }}
+          echo "Generating version.json"
+          cat <<EOF > docs/json/version.json
+          {
+              "number": "$VERSION",
+              "time-updated": "$(date)",
+              "recent-commit": "$RECENT_COMMIT"
+          }
+          EOF
+          echo "version.json generated successfully"
 
       - name: Commit and push changes
         run: |
-          git add .
+          git add docs/json/version.json
           git commit -m "(Chore): Update Version"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
