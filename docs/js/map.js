@@ -77,20 +77,20 @@ function formatExpirationTime(expirationTime) {
 
 // Function to get the popup text based on the feature
 function getPopupText(feature) {
-    let weatherEvent = feature.properties.event;
+	let weatherEvent = feature.properties.event;
 
-    if (log_features.matchesAny(weatherEvent)) {
-        console.log(feature);
-    }
+	if (log_features.matchesAny(weatherEvent)) {
+		console.log(feature);
+	}
 
-    const popupContent = `
+	const popupContent = `
         ${asText(getSevereStorm(feature))}
         <button id="show-alert-text" style="margin-top: 10px; padding: 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">
             Show Alert Text
         </button>
     `;
 
-    return popupContent;
+	return popupContent;
 }
 
 function timePassedAsSeconds(time) {
@@ -100,31 +100,90 @@ function timePassedAsSeconds(time) {
 	return seconds;
 }
 
+function createPolygonFromGeocode(geocode) {
+    // Get coordinates from the ugcCoordinates object
+    const coordinates = geocode.SAME.map(code => {
+        const coord = ugcCoordinates[code];
+        if (!coord) {
+            console.warn(`No coordinates found for code: ${code}`);
+            return [0, 0]; // Default coordinates if not found
+        }
+        return coord;
+    });
+
+    // Create a simple polygon (bounding box) around the coordinates
+    const polygon = [
+        [Math.min(...coordinates.map(coord => coord[0])), Math.min(...coordinates.map(coord => coord[1]))],
+        [Math.min(...coordinates.map(coord => coord[0])), Math.max(...coordinates.map(coord => coord[1]))],
+        [Math.max(...coordinates.map(coord => coord[0])), Math.max(...coordinates.map(coord => coord[1]))],
+        [Math.max(...coordinates.map(coord => coord[0])), Math.min(...coordinates.map(coord => coord[1]))],
+        [Math.min(...coordinates.map(coord => coord[0])), Math.min(...coordinates.map(coord => coord[1]))]
+    ];
+
+	// Check if any coordinate is [0, 0]
+	if (coordinates.some(coord => coord[0] === 0 && coord[1] === 0)) {
+		//console.warn("Invalid coordinates found, returning null.");
+		return null;
+	}
+
+    console.warn("Polygon created from geocode:", polygon);
+
+    return polygon;
+}
+
 // Function to fetch and update weather alerts
 function updateWeatherAlerts(firstTime) {
 	firstTime = firstTime || false;
 	const doIt = firstTime;
-	fetch("https://api.weather.gov/alerts/active", {
-		headers: {
-			"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
-		},
-	})
+	fetch(
+		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=250",
+		{
+			headers: {
+				"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
+			},
+		}
+	)
 		.then((response) => response.json())
 		.then((data) => {
+			// Ensure all features have proper GeoJSON formatting
+			data.features = data.features.map((feature) => {
+				return feature;
+				if (!feature.geometry) {
+					// Create a default geometry if none exists
+					feature.geometry = {
+                        type: "Polygon",
+                        coordinates: createPolygonFromGeocode(feature.properties.geocode) // Wrap the polygon in an array
+                    };
+				}
+				return feature;
+			});
+
 			// Sort alerts and watches
 			data.features.sort((a, b) => {
-				const order = ["Warning", "Advisory", "Watch"];
+				const order = ["Watch", "Advisory", "Statement", "Warning"];
 				const aIndex = order.findIndex((type) =>
 					a.properties.event.includes(type)
 				);
 				const bIndex = order.findIndex((type) =>
 					b.properties.event.includes(type)
 				);
-				return (
-					(bIndex === -1 ? -1 : order.length - bIndex) -
-					(aIndex === -1 ? -1 : order.length - aIndex)
-				);
+
+				// If event types are different, sort by event type
+				if (aIndex !== bIndex) {
+					return aIndex - bIndex;
+				}
+
+				// If event types are the same, sort by time issued
+				const aTime = new Date(a.properties.sent).getTime();
+				const bTime = new Date(b.properties.sent).getTime();
+				return aTime - bTime;
 			});
+
+			// Remove features with null geometry
+			data.features = data.features.filter((feature) => feature.geometry !== null);
+
+			// Debug
+			//console.table(data.features.map((feature) => feature.properties.event));
 
 			// Clear existing layers
 			clearLayers(["weather-alerts", "weather-alerts-border"]);
