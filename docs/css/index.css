@@ -151,7 +151,7 @@ input:focus {
 /* Media query for larger screens */
 @media (min-width: 1200px) {
     #alert-text-modal-content {
-        width: 30%; /* Adjust width for larger screens */
+        width: 35%; /* Adjust width for larger screens */
     }
 }
 
