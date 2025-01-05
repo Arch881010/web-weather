@@ -8,10 +8,10 @@ document.addEventListener("DOMContentLoaded", () => {
 		const div = L.DomUtil.create("div", "taskbar");
 		div.id = "taskbar";
 		div.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <span>Settings</span>
+
+               
                 <button id="open-settings">Open Settings</button>
-            </div>
+
         `;
 		return div;
 	};

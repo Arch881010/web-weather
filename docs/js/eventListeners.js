@@ -32,7 +32,7 @@ document.addEventListener("mapLoaded", () => {
 	}, 1500); // Match the duration of the CSS transition
 
 	// Fetches the version data to store it in our settings
-	fetch("./json/version.json")
+	fetch(("./json/version.json"))
 		.then((response) => response.json())
 		.then((data) => {
 			document.getElementById("version-number").textContent = data["number"];

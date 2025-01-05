@@ -46,11 +46,12 @@ body {
 
 .taskbar {
     padding: 10px;
-    background-color: rgba(0, 0, 0, 0.8);
+    background-color: transparent;
     color: white;
     font-size: 14px;
     border-radius: 5px;
     width: 100%;
+    
 }
 
 #settings-panel {
@@ -65,6 +66,7 @@ body {
     justify-content: center;
     align-items: center;
     z-index: 1001;
+    display: none; /* Hide the settings panel by default */
 }
 
 #settings-panel > div {
@@ -82,17 +84,18 @@ body {
 
 button {
     padding: 10px 20px;
-    background-color: #007bff5d;
+    background-color: #0056b3; /* No background */
     color: white;
     border: none;
     border-radius: 5px;
     cursor: pointer;
     font-size: 16px;
-    transition: background-color 0.3s ease;
+    transition: color 0.3s ease, background-color 0.3s ease;
     margin: 5px 0; /* Reduced margin */
 }
 
 button:hover {
+    color: #007bff96; /* Change text color on hover */
     background-color: #0056b3;
 }
 
@@ -128,15 +131,28 @@ input:focus {
     overflow: hidden; /* Prevent scrolling on the entire map */
     background-color: rgba(0, 0, 0, 0.5);
 }
-
 #alert-text-modal-content {
     margin: 10% auto; /* Adjust top margin to position higher */
     padding: 20px;
-    width: 60%; /* Adjust width as needed */
+    width: 60%; /* Default width */
     border: 1px solid #888;
     border-radius: 10px;
     height: 60%; /* Adjust height as needed */
     overflow-y: auto; /* Add scroll if content overflows */
+    scrollbar-width: none; /* Hide scrollbar for Firefox */
+    -ms-overflow-style: none; /* Hide scrollbar for Internet Explorer and Edge */
+}
+
+/* Hide scrollbar for WebKit browsers (Chrome, Safari) */
+#alert-text-modal-content::-webkit-scrollbar {
+    display: none;
+}
+
+/* Media query for larger screens */
+@media (min-width: 1200px) {
+    #alert-text-modal-content {
+        width: 30%; /* Adjust width for larger screens */
+    }
 }
 
 #close-modal {
