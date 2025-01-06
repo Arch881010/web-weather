@@ -139,7 +139,7 @@ function createPolygonFromGeocode(geocode) {
 	];
 
 	// Check if any coordinate is [0, 0]
-	if (coordinates.some(((coord)) => coord[0] === 0 && coord[1] === 0)) {
+	if (coordinates.some((coord) => coord[0] === 0 && coord[1] === 0)) {
 		//console.warn("Invalid coordinates found, returning null.");
 		return null;
 	}
@@ -167,14 +167,6 @@ function updateWeatherAlerts(firstTime) {
 			// Copilot
 			data.features = data.features.map((feature) => {
 				return feature;
-				if (!feature.geometry) {
-					// Create a default geometry if none exists
-					feature.geometry = {
-                        type: "Polygon",
-                        coordinates: createPolygonFromGeocode(feature.properties.geocode) // Wrap the polygon in an array
-                    };
-				}
-				return feature;
 			});
 
 			// Sort alerts and watches
@@ -199,7 +191,10 @@ function updateWeatherAlerts(firstTime) {
 			});
 
 			// Remove features with null geometry
-			data.features = data.features.filter((feature) => feature.geometry !== null);
+			data.features = data.features.filter(
+				(feature) => feature.geometry !== null
+			);
+			// EOC
 
 			// Debug
 			//console.table(data.features.map((feature) => feature.properties.event));
@@ -250,52 +245,6 @@ function updateWeatherAlerts(firstTime) {
 		});
 }
 
-// Function to fetch and update active watches from KMZ file
-function updateActiveWatches() {
-	const kmzUrl = "https://www.spc.noaa.gov/products/watch/ActiveWW.kmz";
-
-	fetch(config.urls.ww)
-		.then((response) => response.arrayBuffer())
-		.then((buffer) => {
-			const zip = new JSZip();
-			return zip.loadAsync(buffer);
-		})
-		.then((zip) => {
-			const kmlFile = Object.keys(zip.files).find((filename) =>
-				filename.endsWith(".kml")
-			);
-			return zip.files[kmlFile].async("string");
-		})
-		.then((kmlText) => {
-			const parser = new DOMParser();
-			const kml = parser.parseFromString(kmlText, "application/xml");
-			const geojson = toGeoJSON.kml(kml);
-
-			// Add the GeoJSON layer to the map with color coding
-			L.geoJSON(geojson, {
-				style: function (feature) {
-					return {
-						color: getColor(feature.properties.event), // Border color
-						weight: 3, // Border width
-						opacity: config.opacity.polygon, // Outer border opacity
-						fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
-					};
-				},
-				onEachFeature: function (feature, layer) {
-					if (feature.properties) {
-						layer.bindPopup(getPopupText(feature));
-					}
-				},
-				id: "active-watches",
-			})
-				.addTo(map)
-				.bringToFront();
-		})
-		.catch((error) => {
-			console.error("Error fetching or processing KMZ file:", error);
-		});
-}
-
 // Function to clear existing layers
 function clearLayers(layerIds) {
 	map.eachLayer((layer) => {
@@ -343,7 +292,8 @@ function updateCountdown(force) {
 		if (timeLeft <= 0) {
 			timeLeft = 60;
 			window.timeUntilNextUpdate = timeLeft;
-			updateMap();
+			updateWeatherAlerts();
+			updateRadarLayer();
 		}
 		window.timeUntilNextUpdate = timeLeft;
 	}, 1000);
@@ -471,10 +421,4 @@ function asText(json) {
 
 function forceUpdate() {
 	window.timeUntilNextUpdate = 1;
-}
-
-function updateMap() {
-	updateWeatherAlerts();
-	updateActiveWatches();
-	updateRadarLayer();
 }
