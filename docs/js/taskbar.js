@@ -86,9 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 		// Setup the URLs depending if we are in debug mode or not
 		for (let key in config.debug.list) {
-			if (config.debug.list[key] === "ww") {
-				config.urls.ww = config.debug.ww_url;
-			}
+			config.urls[key] = config.debug[(key + "_url")];
 		}
 	};
 

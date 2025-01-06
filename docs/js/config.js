@@ -8,7 +8,7 @@ const default_config = {
 		countyBorders: 0.1,
 	},
 	debug: {
-		list: ["ww"],
+		list: [],
 		ww_url: "./dev/activeWW.kmz",
 	},
 	urls: {
