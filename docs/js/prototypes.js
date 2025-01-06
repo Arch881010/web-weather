@@ -18,5 +18,5 @@ Array.prototype.matchesAny = function (text) {
 };
 
 Date.prototype.timePassedAsSeconds = function () {
-    return Math.floor((new Date() - this) / 1000);
+	return Math.floor((new Date() - this) / 1000);
 };

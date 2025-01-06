@@ -8,10 +8,11 @@ console.info(
 	(log_features || ["None"]).toString()
 );
 
+// Copilot wrote this
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
 // Add state borders to the map
-map.on("zoomend", addCountyBorders);
+map.on("zoomend", addCountyBorders); // <- And this
 window.countyBordersShown = false;
 function addCountyBorders() {
 	if (map.getZoom() < 9) {
@@ -44,12 +45,13 @@ function addCountyBorders() {
 				.bringToFront();
 		});
 }
-// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles)
+// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles) (Copilot also did this)
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
 	attribution:
 		'&copy; <a href="https://carto.com/attributions">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }).addTo(map);
 
+// Copilot also wrote this function.
 // Function to format the expiration time
 function formatExpirationTime(expirationTime) {
 	const expirationDate = new Date(expirationTime);
@@ -75,6 +77,7 @@ function formatExpirationTime(expirationTime) {
 	return formattedTime.trim();
 }
 
+// Actually human wrote
 // Function to get the popup text based on the feature
 function getPopupText(feature) {
 	let weatherEvent = feature.properties.event;
@@ -136,7 +139,7 @@ function createPolygonFromGeocode(geocode) {
 	];
 
 	// Check if any coordinate is [0, 0]
-	if (coordinates.some((coord) => coord[0] === 0 && coord[1] === 0)) {
+	if (coordinates.some(((coord)) => coord[0] === 0 && coord[1] === 0)) {
 		//console.warn("Invalid coordinates found, returning null.");
 		return null;
 	}
@@ -161,14 +164,15 @@ function updateWeatherAlerts(firstTime) {
 		.then((response) => response.json())
 		.then((data) => {
 			// Ensure all features have proper GeoJSON formatting
+			// Copilot
 			data.features = data.features.map((feature) => {
 				return feature;
 				if (!feature.geometry) {
 					// Create a default geometry if none exists
 					feature.geometry = {
-						type: "Polygon",
-						coordinates: createPolygonFromGeocode(feature.properties.geocode), // Wrap the polygon in an array
-					};
+                        type: "Polygon",
+                        coordinates: createPolygonFromGeocode(feature.properties.geocode) // Wrap the polygon in an array
+                    };
 				}
 				return feature;
 			});
@@ -195,9 +199,7 @@ function updateWeatherAlerts(firstTime) {
 			});
 
 			// Remove features with null geometry
-			data.features = data.features.filter(
-				(feature) => feature.geometry !== null
-			);
+			data.features = data.features.filter((feature) => feature.geometry !== null);
 
 			// Debug
 			//console.table(data.features.map((feature) => feature.properties.event));
@@ -347,6 +349,7 @@ function updateCountdown(force) {
 	}, 1000);
 }
 
+// Copilot wrote this constant and the function for .onAdd
 // Add countdown timer to the map
 const countdownDiv = L.control({ position: "bottomright" });
 countdownDiv.onAdd = function () {
