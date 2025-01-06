@@ -23,6 +23,7 @@ document.onreadystatechange = () => {
 };
 
 document.addEventListener("mapLoaded", () => {
+	// Copilot
 	// Adds ease-out transition to the loading screen then removes it.
 	const loadingScreen = document.getElementById("loading-screen");
 	loadingScreen.style.transition = "opacity 1.5s ease-out";
@@ -30,19 +31,21 @@ document.addEventListener("mapLoaded", () => {
 	setTimeout(() => {
 		loadingScreen.style.display = "none";
 	}, 1500); // Match the duration of the CSS transition
+	// EOC
 
 	// Fetches the version data to store it in our settings
-	fetch(("./json/version.json"))
+	fetch("./json/version.json")
 		.then((response) => response.json())
 		.then((data) => {
 			document.getElementById("version-number").textContent = data["number"];
-			document.getElementById("time-updated").textContent = data["time-updated"];
-			document.getElementById("recent-commit").textContent = data["recent-commit"];	
-		})
+			document.getElementById("time-updated").textContent =
+				data["time-updated"];
+			document.getElementById("recent-commit").textContent =
+				data["recent-commit"];
+		});
 });
 
-// Event listener when a variable is updated
-
+// Copilot
 document.addEventListener("DOMContentLoaded", function () {
 	// Create the modal element
 	const modal = document.createElement("div");
@@ -76,3 +79,4 @@ document.addEventListener("DOMContentLoaded", function () {
 		}
 	};
 });
+// EOC

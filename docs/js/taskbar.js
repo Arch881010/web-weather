@@ -1,5 +1,5 @@
 /** @format */
-
+// Copilot
 document.addEventListener("DOMContentLoaded", () => {
 	// Create a taskbar control
 	const taskbar = L.control({ position: "bottomleft" });
@@ -17,6 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	};
 
 	taskbar.addTo(map);
+	//EOC
 
 	const settingsPanel = document.getElementById("settings-panel");
 

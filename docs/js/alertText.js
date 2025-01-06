@@ -23,11 +23,14 @@ function getAlertText(feature) {
 		data.headline = properties.headline;
 	}
 
+	// Check if the headline contains a time zone abbreviation
+	// Copilot
 	const timeZoneMatch = properties.headline.match(
 		/\b(EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b/
 	);
 	const timeZone = timeZoneMatch ? timeZoneMatch[0] : "UTC";
 	data.sent = formatDateTime(data.sent, timeZone);
+	// EOC
 
 	let text = `
 ${data.event}
@@ -50,6 +53,7 @@ ${data.instruction}
 }
 
 function formatDateTime(dateTimeStr, timeZoneAbbr) {
+	// Copilot
 	const timeZoneMap = {
 		CST: "America/Chicago",
 		CDT: "America/Chicago",
@@ -62,6 +66,7 @@ function formatDateTime(dateTimeStr, timeZoneAbbr) {
 	};
 
 	const timeZone = timeZoneMap[timeZoneAbbr] || "UTC";
+	// EOC
 	const date = new Date(dateTimeStr);
 	const options = {
 		weekday: "short",
@@ -73,5 +78,7 @@ function formatDateTime(dateTimeStr, timeZoneAbbr) {
 		day: "numeric",
 		timeZone: timeZone,
 	};
+
+	// Copilot
 	return date.toLocaleDateString("en-US", options);
 }
