@@ -39,13 +39,15 @@
 						max="100"
 						step="1"
 						value="50" />%
-					<span class="info-icon" title="0-100, where 0% is invisible and 100% is most visible."
+					<span
+						class="info-icon"
+						title="0-100, where 0% is invisible and 100% is most visible."
 						><i class="fas fa-info-circle"></i
 					></span>
 				</label>
 				<br />
 				<label>
-					Polygon Fill:<br>
+					Polygon Fill:<br />
 					<input
 						type="number"
 						id="opacity-polygon-fill"
@@ -53,7 +55,9 @@
 						max="100"
 						step="1"
 						value="0" />%
-					<span class="info-icon" title="0-100, where 0% is invisible and 100% is most visible."
+					<span
+						class="info-icon"
+						title="0-100, where 0% is invisible and 100% is most visible."
 						><i class="fas fa-info-circle"></i
 					></span>
 				</label>
@@ -67,7 +71,9 @@
 						max="100"
 						step="1"
 						value="100" />%
-					<span class="info-icon" title="0-100, where 0% is invisible and 100% is most visible."
+					<span
+						class="info-icon"
+						title="0-100, where 0% is invisible and 100% is most visible."
 						><i class="fas fa-info-circle"></i
 					></span>
 				</label>
@@ -81,21 +87,29 @@
 						max="100"
 						step="1"
 						value="100" />%
-					<span class="info-icon" title="0-100, where 0% is invisible and 100% is most visible."
+					<span
+						class="info-icon"
+						title="0-100, where 0% is invisible and 100% is most visible."
 						><i class="fas fa-info-circle"></i
 					></span>
 				</label>
 				<br />
 			</div>
 			<button id="close-settings">Close</button>
-			<div id="version-info" style="margin-top: 20px; font-size: 0.9em; color: #666;">
-				Version: <span id="version-number">Loading...</span><br>
-				Last Updated: <span id="time-updated">Loading...</span><br>
+			<div
+				id="version-info"
+				style="margin-top: 20px; font-size: 0.9em; color: #666">
+				Version: <span id="version-number">Loading...</span><br />
+				Last Updated: <span id="time-updated">Loading...</span><br />
 				Recent Commit: <span id="recent-commit">Loading...</span>
 			</div>
 		</div>
-		<script src="./js/eventListeners.js"></script>
+		<!-- External Sources -->
 		<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+		<script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
+		<!-- Internal Sources -->
+		<script src="./js/eventListeners.js" defer></script>
 		<script src="./js/config.js"></script>
 		<script src="./js/prototypes.js"></script>
 		<script src="./js/colors.js"></script>

@@ -83,6 +83,13 @@ document.addEventListener("DOMContentLoaded", () => {
 			config.opacity.polygon = savedSettings.opacity.polygon;
 			config.opacity.countyBorders = savedSettings.opacity.countyBorders;
 		}
+
+		// Setup the URLs depending if we are in debug mode or not
+		for (let key in config.debug.list) {
+			if (config.debug.list[key] === "ww") {
+				config.urls.ww = config.debug.ww_url;
+			}
+		}
 	};
 
 	// Load settings on page load

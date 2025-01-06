@@ -15,7 +15,7 @@ document.addEventListener("visibilitychange", () => {
 
 // Hide the loading screen once the map is fully loaded
 document.onreadystatechange = () => {
-	updateRadarLayer();
+	updateMap();
 	addCountyBorders();
 	updateCountdown();
 
@@ -40,8 +40,6 @@ document.addEventListener("mapLoaded", () => {
 			document.getElementById("recent-commit").textContent = data["recent-commit"];	
 		})
 });
-
-// Event listener when a variable is updated
 
 document.addEventListener("DOMContentLoaded", function () {
 	// Create the modal element
