@@ -154,7 +154,7 @@ function updateWeatherAlerts(firstTime) {
 	firstTime = firstTime || false;
 	const doIt = firstTime;
 	fetch(
-		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=250",
+		"https://api.weather.gov/alerts/active?status=actual",
 		{
 			headers: {
 				"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
@@ -204,7 +204,7 @@ function updateWeatherAlerts(firstTime) {
 
 			// Add the black border around each polygon
 			L.geoJSON(data, {
-				style: function (feature) {
+				style: function () {
 					return {
 						color: "black", // Outer border color
 						weight: 5, // Outer border width
@@ -226,11 +226,16 @@ function updateWeatherAlerts(firstTime) {
 					};
 				},
 				onEachFeature: function (feature, layer) {
+					// If there is properties, create a popup so we can change it later
 					if (feature.properties) {
 						layer.bindPopup(getPopupText(feature));
 					}
 
-					layer.on("popupopen", function () {
+					// When we open a popup, we need to update the text.
+					// This was the expires is always up to date.
+					layer.on("popupopen", function (e) {
+						var popup = e.popup;
+						popup.setContent(getPopupText(feature));
 						console.log("Popup opened for feature:", feature);
 						window.cachedAlertText = getAlertText(feature);
 					});
