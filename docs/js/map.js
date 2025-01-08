@@ -245,6 +245,50 @@ function updateWeatherAlerts(firstTime) {
 		});
 }
 
+// Function to fetch and update active watches from KMZ file
+function updateActiveWatches() {
+	fetch(config.urls.ww)
+		.then((response) => response.arrayBuffer())
+		.then((buffer) => {
+			const zip = new JSZip();
+			return zip.loadAsync(buffer);
+		})
+		.then((zip) => {
+			const kmlFile = Object.keys(zip.files).find((filename) =>
+				filename.endsWith(".kml")
+			);
+			return zip.files[kmlFile].async("string");
+		})
+		.then((kmlText) => {
+			const parser = new DOMParser();
+			const kml = parser.parseFromString(kmlText, "application/xml");
+			const geojson = toGeoJSON.kml(kml);
+			console.table(geojson.features.map((feature) => feature.properties.event));
+			// Add the GeoJSON layer to the map with color coding
+			L.geoJSON(geojson, {
+				style: function (feature) {
+					return {
+						color: getColor(feature.properties.event), // Border color
+						weight: 3, // Border width
+						opacity: config.opacity.polygon, // Outer border opacity
+						fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
+					};
+				},
+				onEachFeature: function (feature, layer) {
+					if (feature.properties) {
+						layer.bindPopup(getPopupText(feature));
+					}
+				},
+				id: "active-watches",
+			})
+				.addTo(map)
+				.bringToFront();
+		})
+		.catch((error) => {
+			console.error("Error fetching or processing KMZ file:", error);
+		});
+}
+
 // Function to clear existing layers
 function clearLayers(layerIds) {
 	map.eachLayer((layer) => {
@@ -292,8 +336,7 @@ function updateCountdown(force) {
 		if (timeLeft <= 0) {
 			timeLeft = 60;
 			window.timeUntilNextUpdate = timeLeft;
-			updateWeatherAlerts();
-			updateRadarLayer();
+			updateMap();
 		}
 		window.timeUntilNextUpdate = timeLeft;
 	}, 1000);
@@ -421,4 +464,10 @@ function asText(json) {
 
 function forceUpdate() {
 	window.timeUntilNextUpdate = 1;
+}
+
+function updateMap() {
+	updateWeatherAlerts();
+	updateActiveWatches();
+	updateRadarLayer();
 }
