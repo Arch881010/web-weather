@@ -1,117 +1,171 @@
-<!-- @format -->
-<!-- Copilot wrote a bit of this as well.-->
-
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Weather Map</title>
-		<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-		<link
-			rel="stylesheet"
-			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
-		<link rel="stylesheet" href="./css/index.css" />
-	</head>
-	<body>
-		<div id="loading-screen">
-			<div class="spinner"></div>
-			<p>Loading, please wait...</p>
-		</div>
-		<div id="map"></div>
-		<!-- Settings Panel -->
-		<div id="settings-panel" class="settings-content" style="display: none">
-			<h2>Settings</h2>
-			<div>
-				<h3>General</h3>
-				<label>
-					Save Settings between sessions?
-					<input type="checkbox" id="save-settings" />
-				</label>
-			</div>
-			<div>
-				<h3>Opacity</h3>
-				<label>
-					Radar:
-					<input
-						type="number"
-						id="opacity-radar"
-						min="0"
-						max="100"
-						step="1"
-						value="50" />%
-					<span
-						class="info-icon"
-						title="0-100, where 0% is invisible and 100% is most visible."
-						><i class="fas fa-info-circle"></i
-					></span>
-				</label>
-				<br />
-				<label>
-					Polygon Fill:<br />
-					<input
-						type="number"
-						id="opacity-polygon-fill"
-						min="0"
-						max="100"
-						step="1"
-						value="0" />%
-					<span
-						class="info-icon"
-						title="0-100, where 0% is invisible and 100% is most visible."
-						><i class="fas fa-info-circle"></i
-					></span>
-				</label>
-				<br />
-				<label>
-					Polygon:
-					<input
-						type="number"
-						id="opacity-polygon"
-						min="0"
-						max="100"
-						step="1"
-						value="100" />%
-					<span
-						class="info-icon"
-						title="0-100, where 0% is invisible and 100% is most visible."
-						><i class="fas fa-info-circle"></i
-					></span>
-				</label>
-				<br />
-				<label>
-					County Borders:
-					<input
-						type="number"
-						id="opacity-county-borders"
-						min="0"
-						max="100"
-						step="1"
-						value="100" />%
-					<span
-						class="info-icon"
-						title="0-100, where 0% is invisible and 100% is most visible."
-						><i class="fas fa-info-circle"></i
-					></span>
-				</label>
-				<br />
-			</div>
-			<button id="close-settings">Close</button>
-			<div
-				id="version-info"
-				style="margin-top: 20px; font-size: 0.9em; color: #666">
-				Version: <span id="version-number">Loading...</span><br />
-				Last Updated: <span id="time-updated">Loading...</span><br />
-				Recent Commit: <span id="recent-commit">Loading...</span>
-			</div>
-		</div>
-		<script src="./js/eventListeners.js"></script>
-		<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-		<script src="./js/config.js"></script>
-		<script src="./js/prototypes.js"></script>
-		<script src="./js/colors.js"></script>
-		<script src="./js/map.js"></script>
-		<script src="./js/taskbar.js"></script>
-		<script src="./js/alertText.js"></script>
-	</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+    />
+    <link rel="stylesheet" href="./css/index.css" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        position: relative;
+        height: 100vh;
+        background-color: #f0f0f0;
+      }
+
+      .reflectivity-bar {
+        position: absolute;
+        bottom: 75px;
+        right: 10px;
+        width: 150px;
+        height: 10px;
+        background: linear-gradient(
+          to right,
+          #00ffff,
+          #00ff00,
+          #ffff00,
+          #ffa500,
+          #ff0000
+        );
+        border-radius: 5px;
+        border: 1px solid #000;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 5px;
+        font-size: 12px;
+        color: black;
+        font-family: Arial, sans-serif;
+        z-index: 1000;
+      }
+
+      .reflectivity-labels {
+        display: flex;
+        justify-content: space-between;
+        position: absolute;
+        width: 100%;
+        top: -15px;
+        left: 0;
+        font-size: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="loading-screen">
+      <div class="spinner"></div>
+      <p>Loading, please wait...</p>
+    </div>
+    <div id="map"></div>
+    <div id="settings-panel" class="settings-content" style="display: none">
+      <h2>Settings</h2>
+      <div>
+        <h3>General</h3>
+        <label>
+          Save Settings between sessions?
+          <input type="checkbox" id="save-settings" />
+        </label>
+      </div>
+      <div>
+        <h3>Opacity</h3>
+        <label>
+          Radar:
+          <input
+            type="number"
+            id="opacity-radar"
+            min="0"
+            max="100"
+            step="1"
+            value="50"
+          />%
+          <span
+            class="info-icon"
+            title="0-100, where 0% is invisible and 100% is most visible."
+            ><i class="fas fa-info-circle"></i
+          ></span>
+        </label>
+        <br />
+        <label>
+          Polygon Fill:<br />
+          <input
+            type="number"
+            id="opacity-polygon-fill"
+            min="0"
+            max="100"
+            step="1"
+            value="0"
+          />%
+          <span
+            class="info-icon"
+            title="0-100, where 0% is invisible and 100% is most visible."
+            ><i class="fas fa-info-circle"></i
+          ></span>
+        </label>
+        <br />
+        <label>
+          Polygon:
+          <input
+            type="number"
+            id="opacity-polygon"
+            min="0"
+            max="100"
+            step="1"
+            value="100"
+          />%
+          <span
+            class="info-icon"
+            title="0-100, where 0% is invisible and 100% is most visible."
+            ><i class="fas fa-info-circle"></i
+          ></span>
+        </label>
+        <br />
+        <label>
+          County Borders:
+          <input
+            type="number"
+            id="opacity-county-borders"
+            min="0"
+            max="100"
+            step="1"
+            value="100"
+          />%
+          <span
+            class="info-icon"
+            title="0-100, where 0% is invisible and 100% is most visible."
+            ><i class="fas fa-info-circle"></i
+          ></span>
+        </label>
+        <br />
+      </div>
+      <button id="close-settings">Close</button>
+      <div
+        id="version-info"
+        style="margin-top: 20px; font-size: 0.9em; color: #666"
+      >
+        Version: <span id="version-number">Loading...</span><br />
+        Last Updated: <span id="time-updated">Loading...</span><br />
+        Recent Commit: <span id="recent-commit">Loading...</span>
+      </div>
+    </div>
+    <div class="reflectivity-bar">
+      <div class="reflectivity-labels">
+        <span>Light</span>
+        <span>Moderate</span>
+        <span>Heavy</span>
+      </div>
+    </div>
+    <script src="./js/eventListeners.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="./js/config.js"></script>
+    <script src="./js/prototypes.js"></script>
+    <script src="./js/colors.js"></script>
+    <script src="./js/map.js"></script>
+    <script src="./js/taskbar.js"></script>
+    <script src="./js/alertText.js"></script>
+  </body>
 </html>
