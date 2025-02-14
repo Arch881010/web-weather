@@ -34,7 +34,7 @@ function addCountyBorders() {
 			L.geoJSON(data, {
 				style: {
 					color: getColor("county"), // Light gray for border color
-					weight: 3, // Border width
+					weight: 3 * (map.getZoom() / 9), // Border width
 					opacity: config.opacity.countyBorders, // low opactiy
 					fillOpacity: 0, // Make the polygon fill transparent
 				},
