@@ -83,6 +83,8 @@ document.addEventListener("DOMContentLoaded", () => {
 			config.opacity.polygon_fill = savedSettings.opacity.polygon_fill;
 			config.opacity.polygon = savedSettings.opacity.polygon;
 			config.opacity.countyBorders = savedSettings.opacity.countyBorders;
+
+			config.show.watches = true;
 		}
 	};
 

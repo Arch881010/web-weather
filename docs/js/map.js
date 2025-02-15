@@ -118,12 +118,14 @@ function updateWeatherAlerts(firstTime) {
 		}
 	)
 		.then((response) => response.json())
-		.then((data) => {
-			// Ensure all features have proper GeoJSON formatting
-			// Copilot
-			data.features = data.features.map((feature) => {
-				return feature;
-			});
+		.then(async (data) => {
+
+			if (config.show.watches) {
+				const watches = await getWatches();
+				for (const watch of watches) {
+					data.features.push(watch);
+				}
+			}
 
 			// Sort alerts and watches
 			data.features.sort((a, b) => {
@@ -151,6 +153,7 @@ function updateWeatherAlerts(firstTime) {
 				(feature) => feature.geometry !== null
 			);
 			// EOC
+
 
 			// Debug
 			//console.table(data.features.map((feature) => feature.properties.event));
@@ -212,13 +215,18 @@ function clearLayers(layerIds) {
 
 // Function to fetch and update radar layer
 function updateRadarLayer() {
+	if ((localStorage.getItem("radar") || "true") == "false") {
+		console.error("Radar layer is disabled in settings, skipping.");
+		return;
+	}
+
 	// Clear existing radar layers
 	clearLayers(["radar-layer"]);
 
 	// Add the radar layer
 	L.tileLayer
-		.wms("https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi", {
-			layers: "nexrad-n0r-900913",
+		.wms(`https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/${config.radar}.cgi`, {
+			layers: `nexrad-${config.radar}-900913`,
 			format: "image/png",
 			transparent: true,
 			attribution: "Weather data © 2024 IEM Nexrad",
@@ -273,56 +281,74 @@ countdownDiv.onAdd = function () {
 countdownDiv.addTo(map);
 
 function getSevereStorm(feature) {
-	let weatherEvent = feature.properties.event;
-	let weatherParams = feature.properties.parameters;
-	let hailSize = weatherParams.maxHailSize || ["N/A"];
-	let windSpeed = weatherParams.maxWindGust || ["N/A"];
-	let tornadoPossible = weatherParams.tornadoDetection || ["N/A"];
-	let hailSource = weatherParams.hailThreat || ["Radar Indicated"];
-	let windSource = weatherParams.windThreat || ["Radar Indicated"];
-	let torSeverity = weatherParams.tornadoDamageThreat || [""];
+	try {
+		let weatherEvent = feature.properties.event;
+		let weatherParams = feature.properties.parameters || {};
+		if (feature.properties.description == undefined)
+			throw new Error("No description found.");
+		let hailSize = weatherParams.maxHailSize || ["N/A"];
+		let windSpeed = weatherParams.maxWindGust || ["N/A"];
+		let tornadoPossible = weatherParams.tornadoDetection || ["N/A"];
+		let hailSource = weatherParams.hailThreat || ["Radar Indicated"];
+		let windSource = weatherParams.windThreat || ["Radar Indicated"];
+		let torSeverity = weatherParams.tornadoDamageThreat || [""];
 
-	let params = {
-		event: weatherEvent,
-		expires: feature.properties.expires,
-		isDefault: false,
-		description: feature.properties.description,
-		parameters: {
-			hail: {
-				maxHail: hailSize[0],
-				radarIndicated: hailSource[0].toTitleCase(),
+		let params = {
+			event: weatherEvent,
+			expires: feature.properties.expires,
+			isDefault: false,
+			description: feature.properties.description,
+			parameters: {
+				hail: {
+					maxHail: hailSize[0],
+					radarIndicated: hailSource[0].toTitleCase(),
+				},
+				wind: {
+					windSpeed: windSpeed[0],
+					radarIndicated: windSource[0].toTitleCase(),
+				},
+				tornado: {
+					possible: tornadoPossible[0].toTitleCase(),
+					severity: torSeverity[0].toTitleCase(),
+				},
+				origionalFeature: feature,
 			},
-			wind: {
-				windSpeed: windSpeed[0],
-				radarIndicated: windSource[0].toTitleCase(),
+		};
+
+		// In case no hail or is 0.00"
+		if (params.parameters.hail.maxHail == "0.00") {
+			params.parameters.hail.maxHail = "N/A";
+		}
+
+		// In case no wind or is 0mph
+		if (params.parameters.wind.windSpeed == "0mph") {
+			params.parameters.wind.windSpeed = "N/A";
+		}
+
+		// In case hail has bugged with SWS
+		if (
+			!params.parameters.hail.maxHail.includes('"') &&
+			params.parameters.hail.maxHail != "N/A"
+		) {
+			params.parameters.hail.maxHail += '"';
+		}
+
+		return params;
+	} catch (e) {
+		console.error(e);
+		return {
+			event: "Error",
+			expires: "N/A",
+			description: "An error occurred while parsing the storm data.",
+			isDefault: false,
+			parameters: {
+				hail: { maxHail: "N/A", radarIndicated: "Radar Indicated" },
+				wind: { windSpeed: "N/A", radarIndicated: "Radar Indicated" },
+				tornado: { possible: "N/A", severity: "" },
+				origionalFeature: feature,
 			},
-			tornado: {
-				possible: tornadoPossible[0].toTitleCase(),
-				severity: torSeverity[0].toTitleCase(),
-			},
-			origionalFeature: feature,
-		},
-	};
-
-	// In case no hail or is 0.00"
-	if (params.parameters.hail.maxHail == "0.00") {
-		params.parameters.hail.maxHail = "N/A";
+		};
 	}
-
-	// In case no wind or is 0mph
-	if (params.parameters.wind.windSpeed == "0mph") {
-		params.parameters.wind.windSpeed = "N/A";
-	}
-
-	// In case hail has bugged with SWS
-	if (
-		!params.parameters.hail.maxHail.includes('"') &&
-		params.parameters.hail.maxHail != "N/A"
-	) {
-		params.parameters.hail.maxHail += '"';
-	}
-
-	return params;
 }
 
 function getDefaults(feature) {

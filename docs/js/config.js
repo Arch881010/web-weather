@@ -7,6 +7,10 @@ const default_config = {
 		polygon: 1,
 		countyBorders: 0.1,
 	},
+	show: {
+		watches: true,
+	},
+	radar: "n0r",
 };
 
 const config = default_config;
