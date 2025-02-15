@@ -11,48 +11,67 @@ function convertToText(text) {
 	) {
 		return "Cold";
 	}
+	
 	if (text.includes("Tornado Watch")) {
 		return "Tornado Watch";
 	}
+
 	if (text.includes("Severe Thunderstorm Watch")) {
 		return "Severe Thunderstorm Watch";
 	}
+
 	if (text.includes("Flood Watch")) {
 		return "Flood Watch";
 	}
+
 	if (text.includes("Watch")) {
 		//return "Watch";
 	}
+
 	if (text.includes("Tornado")) {
 		return "Tornado";
 	}
+
 	if (text.includes("Severe Thunderstorm")) {
 		return "Severe Thunderstorm";
 	}
+
 	if (text.includes("Flood")) {
 		return "Flood";
 	}
+
 	if (text.includes("Heat")) {
 		return "Heat";
 	}
+
 	if (text.includes("Winter Storm")) {
 		return "Winter Storm";
 	}
+
 	if (text.includes("Fire")) {
 		return "Fire";
 	}
+
 	if (text.includes("Fog")) {
 		return "Fog";
 	}
+
 	if (text.includes("Marine")) {
 		return "Marine";
 	}
+
 	if (text.includes("Weather Statement")) {
 		return "Weather Statement";
 	}
+
 	if (text.includes("County")) {
 		return "County";
 	}
+
+	if (text.includes("Dust")) {
+		return "Dust";
+	}
+
 	console.warn(
 		"Could not find alert type for",
 		text + ", so we went with default."
@@ -77,5 +96,6 @@ const colorsArray = {
 	"Watch": "#ff00d8",
 	"Cold": "#ffffff",
 	"County": "#A9A9A9",
+	"Dust": "#BDB76B",
 	"Default": "#ffffff",
 };
