@@ -88,9 +88,11 @@ function getPopupText(feature) {
 
 	const popupContent = `
         ${asText(getSevereStorm(feature))}
-        <button id="show-alert-text" style="margin-top: 10px; padding: 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">
+		<div id="btn-div" style="align-items: center; display: flex; justify-content: center; padding: 0px;">
+        <button id="show-alert-text" style="margin-top: 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">
             Show Alert Text
         </button>
+		</div>
     `;
 
 	return popupContent;
