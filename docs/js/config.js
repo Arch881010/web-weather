@@ -11,6 +11,7 @@ const default_config = {
 		watches: true,
 	},
 	radar: "n0q",
+	dev: false
 };
 
 const config = default_config;

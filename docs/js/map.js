@@ -2,17 +2,20 @@
 
 // Initialize the map
 
-const log_features = ["Marine"];
-console.info(
-	"Logging these features (warnings):",
-	(log_features || ["None"]).toString()
-);
+const log_features = ["Tornado Watch", "Severe Thunderstorm Watch"];
 
-// Copilot wrote this
+if (config.dev) {
+	console.info("Development mode is enabled.");
+	console.info(
+		"Logging these features (warnings):",
+		(log_features || ["None"]).toString()
+	);
+}
+
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
 // Add state borders to the map
-map.on("zoomend", addCountyBorders); // <- And this
+map.on("zoomend", addCountyBorders); 
 window.countyBordersShown = false;
 function addCountyBorders() {
 	if (map.getZoom() < 9) {
@@ -45,7 +48,7 @@ function addCountyBorders() {
 				.bringToFront();
 		});
 }
-// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles) (Copilot also did this)
+// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles) 
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
 	attribution:
 		'&copy; <a href="https://carto.com/attributions">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -77,13 +80,12 @@ function formatExpirationTime(expirationTime) {
 	return formattedTime.trim();
 }
 
-// Actually human wrote
 // Function to get the popup text based on the feature
 function getPopupText(feature) {
 	let weatherEvent = feature.properties.event;
 
-	if (log_features.matchesAny(weatherEvent)) {
-		console.log(feature);
+	if (log_features.matchesAny(weatherEvent) && config.dev) {
+		console.info(feature);
 	}
 
 	const popupContent = `
@@ -153,10 +155,6 @@ function updateWeatherAlerts(firstTime) {
 				(feature) => feature.geometry !== null
 			);
 			// EOC
-
-
-			// Debug
-			//console.table(data.features.map((feature) => feature.properties.event));
 
 			// Clear existing layers
 			clearLayers(["weather-alerts", "weather-alerts-border"]);
