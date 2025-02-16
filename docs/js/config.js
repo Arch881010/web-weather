@@ -10,7 +10,7 @@ const default_config = {
 	show: {
 		watches: true,
 	},
-	radar: "n0r",
+	radar: "n0q",
 };
 
 const config = default_config;
