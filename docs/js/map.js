@@ -4,6 +4,9 @@
 
 const log_features = ["Tornado Watch", "Severe Thunderstorm Watch"];
 
+// Our current features so we can cache them locally so we don't have to fetch them every time.
+let current_features, counties, countyBordersLayer;
+// Some dev shenangians
 if (config.dev) {
 	console.info("Development mode is enabled.");
 	console.info(
@@ -12,33 +15,33 @@ if (config.dev) {
 	);
 }
 
+// Creates a new map
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
 // Add state borders to the map
-map.on("zoomend", addCountyBorders); 
+map.on("zoomend", addCountyBorders);
 window.countyBordersShown = false;
+
+async function fetchCountyBorders() {
+	counties = await (await fetch("./json/counties.json")).json();
+}
+
 function addCountyBorders() {
+	// If the zoom is < 9, that means we are zoomed out and can hide the county borders
 	if (map.getZoom() < 9) {
-		if (window.countyBordersShown) {
-			console.info("Removing county borders to the map.");
-			clearLayers(["county-borders"]);
+		if (countyBordersLayer) {
+			map.removeLayer(countyBordersLayer);
+			countyBordersLayer = null;
+			console.info("Hiding county borders.");
 		}
 		window.countyBordersShown = false;
-		return;
-	}
-	if (window.countyBordersShown) {
-		return;
-	}
-	console.info("Adding county borders to the map.");
-	window.countyBordersShown = true;
-	fetch("./json/counties.json")
-		.then((response) => response.json())
-		.then((data) => {
-			L.geoJSON(data, {
+	} else {
+		if (!countyBordersLayer) {
+			countyBordersLayer = L.geoJSON(counties, {
 				style: {
 					color: getColor("county"), // Light gray for border color
 					weight: 3 * (map.getZoom() / 9), // Border width
-					opacity: config.opacity.countyBorders, // low opactiy
+					opacity: config.opacity.countyBorders, // low opacity
 					fillOpacity: 0, // Make the polygon fill transparent
 				},
 				id: "county-borders",
@@ -46,15 +49,18 @@ function addCountyBorders() {
 			})
 				.addTo(map)
 				.bringToFront();
-		});
+			console.info("Showing county borders.");
+		}
+		window.countyBordersShown = true;
+	}
 }
-// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles) 
+
+// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles)
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
 	attribution:
 		'&copy; <a href="https://carto.com/attributions">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }).addTo(map);
 
-// Copilot also wrote this function.
 // Function to format the expiration time
 function formatExpirationTime(expirationTime) {
 	const expirationDate = new Date(expirationTime);
@@ -109,8 +115,25 @@ function timePassedAsSeconds(time) {
 
 // Function to fetch and update weather alerts
 function updateWeatherAlerts(firstTime) {
-	firstTime = firstTime || false;
-	const doIt = firstTime;
+	if (userSettings.opacity.polygon == 0) {
+		if (firstTime || false) {
+			let alreadyTriggered = window.alreadyTriggered || false;
+			if (!alreadyTriggered) {
+				document.dispatchEvent(mapLoadedEvent);
+			} else {
+				console.warn("mapLoadedEvent already triggered, skipping.");
+			}
+
+			window.alreadyTriggered = true;
+		}
+		console.error(
+			"Polygon opacity is set to 0, no need to load new weather alerts, skipping."
+		);
+		clearLayers(["weather-alerts", "weather-alerts-border"]);
+		current_features = [];
+		return;
+	}
+
 	fetch(
 		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=250",
 		{
@@ -121,6 +144,10 @@ function updateWeatherAlerts(firstTime) {
 	)
 		.then((response) => response.json())
 		.then(async (data) => {
+			// Remove features with null geometry
+			data.features = data.features.filter(
+				(feature) => feature.geometry !== null
+			);
 
 			if (config.show.watches) {
 				const watches = await getWatches();
@@ -150,54 +177,17 @@ function updateWeatherAlerts(firstTime) {
 				return aTime - bTime;
 			});
 
-			// Remove features with null geometry
-			data.features = data.features.filter(
-				(feature) => feature.geometry !== null
-			);
-			// EOC
+			drawAlerts(data);
+			current_features = data;
+			if (firstTime || false) {
+				let alreadyTriggered = window.alreadyTriggered || false;
+				if (!alreadyTriggered) {
+					document.dispatchEvent(mapLoadedEvent);
+				} else {
+					console.warn("mapLoadedEvent already triggered, skipping.");
+				}
 
-			// Clear existing layers
-			clearLayers(["weather-alerts", "weather-alerts-border"]);
-
-			// Add the black border around each polygon
-			L.geoJSON(data, {
-				style: function (feature) {
-					return {
-						color: "black", // Outer border color
-						weight: 5, // Outer border width
-						opacity: config.opacity.polygon, // Outer border opacity
-						fillOpacity: 0, // Make the polygon fill transparent
-					};
-				},
-				id: "weather-alerts-border",
-			}).addTo(map);
-
-			// Add the GeoJSON layer to the map with color coding
-			L.geoJSON(data, {
-				style: function (feature) {
-					return {
-						color: getColor(feature.properties.event), // Border color
-						weight: 3, // Border width
-						opacity: config.opacity.polygon, // Outer border opacity
-						fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
-					};
-				},
-				onEachFeature: function (feature, layer) {
-					if (feature.properties) {
-						layer.bindPopup(getPopupText(feature));
-					}
-
-					layer.on("popupopen", function () {
-						console.log("Popup opened for feature:", feature);
-						window.cachedAlertText = getAlertText(feature);
-					});
-				},
-				id: "weather-alerts",
-			})
-				.addTo(map)
-				.bringToFront();
-			if (doIt) {
-				document.dispatchEvent(mapLoadedEvent);
+				window.alreadyTriggered = true;
 			}
 		});
 }
@@ -213,24 +203,32 @@ function clearLayers(layerIds) {
 
 // Function to fetch and update radar layer
 function updateRadarLayer() {
-	if ((localStorage.getItem("radar") || "true") == "false") {
-		console.error("Radar layer is disabled in settings, skipping.");
-		return;
-	}
-
 	// Clear existing radar layers
 	clearLayers(["radar-layer"]);
 
+	if (userSettings.opacity.radar == 0) {
+		console.error(
+			"Radar layer opacity is set to 0, no need to load new radar data, skipping."
+		);
+		return;
+	}
+
 	// Add the radar layer
+	radarTileMap = userSettings.radar_tilemap;
+	if (radarTileMap == undefined) radarTileMap = "n0q";
 	L.tileLayer
-		.wms(`https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/${config.radar}.cgi`, {
-			layers: `nexrad-${config.radar}-900913`,
-			format: "image/png",
-			transparent: true,
-			attribution: "Weather data © 2024 IEM Nexrad",
-			id: "radar-layer",
-			opacity: config.opacity.radar, // Set the opacity of the radar layer
-		})
+		.wms(
+			`https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/${radarTileMap}.cgi`,
+			{
+				layers: `nexrad-${radarTileMap}-900913`,
+				//layers: radarTileMap,
+				format: "image/png",
+				transparent: true,
+				attribution: "Weather data © 2024 IEM Nexrad",
+				id: "radar-layer",
+				opacity: config.opacity.radar, // Set the opacity of the radar layer
+			}
+		)
 		.addTo(map);
 }
 
@@ -259,6 +257,55 @@ function updateCountdown(force) {
 		}
 		window.timeUntilNextUpdate = timeLeft;
 	}, 1000);
+}
+
+function drawAlerts(data) {
+	// Add the black border around each polygon
+	clearLayers(["weather-alerts", "weather-alerts-border"]);
+
+	if (config.opacity.polygon == 0) return;
+
+	L.geoJSON(data, {
+		style: function (feature) {
+			return {
+				color: "black", // Outer border color
+				weight: 5, // Outer border width
+				opacity: config.opacity.polygon, // Outer border opacity
+				fillOpacity: 0, // Make the polygon fill transparent
+			};
+		},
+		id: "weather-alerts-border",
+	}).addTo(map);
+
+	// Add the GeoJSON layer to the map with color coding
+	L.geoJSON(data, {
+		style: function (feature) {
+			return {
+				color: getColor(feature.properties.event), // Border color
+				weight: 3, // Border width
+				opacity: config.opacity.polygon, // Outer border opacity
+				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
+			};
+		},
+		onEachFeature: function (feature, layer) {
+			if (feature.properties) {
+				layer.bindPopup(getPopupText(feature));
+			}
+
+			layer.on("popupopen", function () {
+				console.log("Popup opened for feature:", feature);
+				window.cachedAlertText = getAlertText(feature);
+			});
+		},
+		id: "weather-alerts",
+	})
+		.addTo(map)
+		.bringToFront();
+}
+
+function redrawAlerts() {
+	if (current_features.length <= 0) updateWeatherAlerts();
+	else drawAlerts(current_features);
 }
 
 // Copilot wrote this constant and the function for .onAdd

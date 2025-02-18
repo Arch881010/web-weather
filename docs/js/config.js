@@ -10,7 +10,7 @@ const default_config = {
 	show: {
 		watches: true,
 	},
-	radar: "n0q",
+	radarTilemap: "n0q",
 	dev: false
 };
 
