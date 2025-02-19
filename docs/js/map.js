@@ -215,6 +215,7 @@ function updateRadarLayer() {
 
 	// Add the radar layer
 	radarTileMap = userSettings.radar_tilemap;
+	if (window.radarLayerShown || false) return;
 	if (radarTileMap == undefined) radarTileMap = "n0q";
 	L.tileLayer
 		.wms(
@@ -230,6 +231,7 @@ function updateRadarLayer() {
 			}
 		)
 		.addTo(map);
+	window.radarLayerShown = true;
 }
 
 // Function to update the countdown timer
