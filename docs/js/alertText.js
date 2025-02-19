@@ -3,7 +3,7 @@
 function getAlertText(feature) {
 	const properties = feature.properties;
 	const parameters = properties.parameters;
-	let data = {
+	const data = {
 		event: properties.event,
 		sender: properties.senderName,
 		sent: properties.sent,
@@ -11,8 +11,6 @@ function getAlertText(feature) {
 		description: properties.description,
 		instruction: properties.instruction,
 	};
-
-	if (properties.event.includes("Watch")) data = getWatchText(properties);
 
 	if (typeof parameters.NWSheadline === "string") {
 		data.headline = parameters.NWSheadline;
@@ -24,8 +22,6 @@ function getAlertText(feature) {
 	} else {
 		data.headline = properties.headline;
 	}
-
-	if (data.headline != "") data.headline += "\n";
 
 	// Check if the headline contains a time zone abbreviation
 	// Copilot
@@ -40,6 +36,7 @@ function getAlertText(feature) {
 ${data.event}
 ${data.sender}
 ${data.sent}
+
 ${data.headline}
 
 ${data.description}
@@ -52,56 +49,7 @@ ${data.instruction}
 `;
 	}
 
-	if (text.length < 250) {
-		console.error("Alert text is too short:", text);
-		console.error("Feature properties:", properties);
-		console.error("Data object:", data);
-	}
-
 	return text.trim();
-}
-
-function getWatchText(properties) {
-	let text = properties.description;
-	properties.headline = properties.headline || "";
-
-	// Let's clean up the text
-	text = text.replace(/&amp;/g, "&");
-	textAsArray = text
-		.split("\n")
-		.map((line) => {
-			line = line.replace("*", "");
-			line = line.trim();
-			return line;
-		})
-		.filter((line) => line !== "");
-
-	properties.event = textAsArray[2];
-	properties.senderName = textAsArray[3];
-	let findheadline = true;
-	let i = 5;
-	while (findheadline) {
-		if (textAsArray[i].toTitleCase().includes("For")) {
-			properties.headline +=
-				textAsArray[i].toTitleCase().split("For")[0].trim() + ".";
-			findheadline = false;
-		} else {
-			properties.headline += textAsArray[i] + " ";
-		}
-		i++;
-	}
-
-	const data = {
-		event: properties.event,
-		sender: properties.senderName,
-		sent: properties.sent,
-		headline: "",
-		description: text,
-		instruction: properties.instruction,
-	};
-
-	i = 5;
-	return data;
 }
 
 function formatDateTime(dateTimeStr, timeZoneAbbr) {

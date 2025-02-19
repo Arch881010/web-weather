@@ -2,46 +2,40 @@
 
 // Initialize the map
 
-const log_features = ["Tornado Watch", "Severe Thunderstorm Watch"];
+const log_features = ["Marine"];
+console.info(
+	"Logging these features (warnings):",
+	(log_features || ["None"]).toString()
+);
 
-// Our current features so we can cache them locally so we don't have to fetch them every time.
-let current_features, counties, countyBordersLayer;
-// Some dev shenangians
-if (config.dev) {
-	console.info("Development mode is enabled.");
-	console.info(
-		"Logging these features (warnings):",
-		(log_features || ["None"]).toString()
-	);
-}
-
-// Creates a new map
+// Copilot wrote this
 const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
 
 // Add state borders to the map
-map.on("zoomend", addCountyBorders);
+map.on("zoomend", addCountyBorders); // <- And this
 window.countyBordersShown = false;
-
-async function fetchCountyBorders() {
-	counties = await (await fetch("./json/counties.json")).json();
-}
-
 function addCountyBorders() {
-	// If the zoom is < 9, that means we are zoomed out and can hide the county borders
 	if (map.getZoom() < 9) {
-		if (countyBordersLayer) {
-			map.removeLayer(countyBordersLayer);
-			countyBordersLayer = null;
-			console.info("Hiding county borders.");
+		if (window.countyBordersShown) {
+			console.info("Removing county borders to the map.");
+			clearLayers(["county-borders"]);
 		}
 		window.countyBordersShown = false;
-	} else {
-		if (!countyBordersLayer) {
-			countyBordersLayer = L.geoJSON(counties, {
+		return;
+	}
+	if (window.countyBordersShown) {
+		return;
+	}
+	console.info("Adding county borders to the map.");
+	window.countyBordersShown = true;
+	fetch("./json/counties.json")
+		.then((response) => response.json())
+		.then((data) => {
+			L.geoJSON(data, {
 				style: {
 					color: getColor("county"), // Light gray for border color
 					weight: 3 * (map.getZoom() / 9), // Border width
-					opacity: config.opacity.countyBorders, // low opacity
+					opacity: config.opacity.countyBorders, // low opactiy
 					fillOpacity: 0, // Make the polygon fill transparent
 				},
 				id: "county-borders",
@@ -49,18 +43,15 @@ function addCountyBorders() {
 			})
 				.addTo(map)
 				.bringToFront();
-			console.info("Showing county borders.");
-		}
-		window.countyBordersShown = true;
-	}
+		});
 }
-
-// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles)
+// Add a dark-themed tile layer to the map (using CartoDB Dark Matter tiles) (Copilot also did this)
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
 	attribution:
 		'&copy; <a href="https://carto.com/attributions">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
 }).addTo(map);
 
+// Copilot also wrote this function.
 // Function to format the expiration time
 function formatExpirationTime(expirationTime) {
 	const expirationDate = new Date(expirationTime);
@@ -86,12 +77,13 @@ function formatExpirationTime(expirationTime) {
 	return formattedTime.trim();
 }
 
+// Actually human wrote
 // Function to get the popup text based on the feature
 function getPopupText(feature) {
 	let weatherEvent = feature.properties.event;
 
-	if (log_features.matchesAny(weatherEvent) && config.dev) {
-		console.info(feature);
+	if (log_features.matchesAny(weatherEvent)) {
+		console.log(feature);
 	}
 
 	const popupContent = `
@@ -115,25 +107,8 @@ function timePassedAsSeconds(time) {
 
 // Function to fetch and update weather alerts
 function updateWeatherAlerts(firstTime) {
-	if (userSettings.opacity.polygon == 0) {
-		if (firstTime || false) {
-			let alreadyTriggered = window.alreadyTriggered || false;
-			if (!alreadyTriggered) {
-				document.dispatchEvent(mapLoadedEvent);
-			} else {
-				console.warn("mapLoadedEvent already triggered, skipping.");
-			}
-
-			window.alreadyTriggered = true;
-		}
-		console.error(
-			"Polygon opacity is set to 0, no need to load new weather alerts, skipping."
-		);
-		clearLayers(["weather-alerts", "weather-alerts-border"]);
-		current_features = [];
-		return;
-	}
-
+	firstTime = firstTime || false;
+	const doIt = firstTime;
 	fetch(
 		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=250",
 		{
@@ -143,18 +118,12 @@ function updateWeatherAlerts(firstTime) {
 		}
 	)
 		.then((response) => response.json())
-		.then(async (data) => {
-			// Remove features with null geometry
-			data.features = data.features.filter(
-				(feature) => feature.geometry !== null
-			);
-
-			if (config.show.watches) {
-				const watches = await getWatches();
-				for (const watch of watches) {
-					data.features.push(watch);
-				}
-			}
+		.then((data) => {
+			// Ensure all features have proper GeoJSON formatting
+			// Copilot
+			data.features = data.features.map((feature) => {
+				return feature;
+			});
 
 			// Sort alerts and watches
 			data.features.sort((a, b) => {
@@ -177,17 +146,57 @@ function updateWeatherAlerts(firstTime) {
 				return aTime - bTime;
 			});
 
-			drawAlerts(data);
-			current_features = data;
-			if (firstTime || false) {
-				let alreadyTriggered = window.alreadyTriggered || false;
-				if (!alreadyTriggered) {
-					document.dispatchEvent(mapLoadedEvent);
-				} else {
-					console.warn("mapLoadedEvent already triggered, skipping.");
-				}
+			// Remove features with null geometry
+			data.features = data.features.filter(
+				(feature) => feature.geometry !== null
+			);
+			// EOC
 
-				window.alreadyTriggered = true;
+			// Debug
+			//console.table(data.features.map((feature) => feature.properties.event));
+
+			// Clear existing layers
+			clearLayers(["weather-alerts", "weather-alerts-border"]);
+
+			// Add the black border around each polygon
+			L.geoJSON(data, {
+				style: function (feature) {
+					return {
+						color: "black", // Outer border color
+						weight: 5, // Outer border width
+						opacity: config.opacity.polygon, // Outer border opacity
+						fillOpacity: 0, // Make the polygon fill transparent
+					};
+				},
+				id: "weather-alerts-border",
+			}).addTo(map);
+
+			// Add the GeoJSON layer to the map with color coding
+			L.geoJSON(data, {
+				style: function (feature) {
+					return {
+						color: getColor(feature.properties.event), // Border color
+						weight: 3, // Border width
+						opacity: config.opacity.polygon, // Outer border opacity
+						fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
+					};
+				},
+				onEachFeature: function (feature, layer) {
+					if (feature.properties) {
+						layer.bindPopup(getPopupText(feature));
+					}
+
+					layer.on("popupopen", function () {
+						console.log("Popup opened for feature:", feature);
+						window.cachedAlertText = getAlertText(feature);
+					});
+				},
+				id: "weather-alerts",
+			})
+				.addTo(map)
+				.bringToFront();
+			if (doIt) {
+				document.dispatchEvent(mapLoadedEvent);
 			}
 		});
 }
@@ -206,29 +215,16 @@ function updateRadarLayer() {
 	// Clear existing radar layers
 	clearLayers(["radar-layer"]);
 
-	if (userSettings.opacity.radar == 0) {
-		console.error(
-			"Radar layer opacity is set to 0, no need to load new radar data, skipping."
-		);
-		return;
-	}
-
 	// Add the radar layer
-	radarTileMap = userSettings.radar_tilemap;
-	if (radarTileMap == undefined) radarTileMap = "n0q";
 	L.tileLayer
-		.wms(
-			`https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/${radarTileMap}.cgi`,
-			{
-				layers: `nexrad-${radarTileMap}-900913`,
-				//layers: radarTileMap,
-				format: "image/png",
-				transparent: true,
-				attribution: "Weather data © 2024 IEM Nexrad",
-				id: "radar-layer",
-				opacity: config.opacity.radar, // Set the opacity of the radar layer
-			}
-		)
+		.wms("https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0r.cgi", {
+			layers: "nexrad-n0r-900913",
+			format: "image/png",
+			transparent: true,
+			attribution: "Weather data © 2024 IEM Nexrad",
+			id: "radar-layer",
+			opacity: config.opacity.radar, // Set the opacity of the radar layer
+		})
 		.addTo(map);
 }
 
@@ -259,55 +255,6 @@ function updateCountdown(force) {
 	}, 1000);
 }
 
-function drawAlerts(data) {
-	// Add the black border around each polygon
-	clearLayers(["weather-alerts", "weather-alerts-border"]);
-
-	if (config.opacity.polygon == 0) return;
-
-	L.geoJSON(data, {
-		style: function (feature) {
-			return {
-				color: "black", // Outer border color
-				weight: 5, // Outer border width
-				opacity: config.opacity.polygon, // Outer border opacity
-				fillOpacity: 0, // Make the polygon fill transparent
-			};
-		},
-		id: "weather-alerts-border",
-	}).addTo(map);
-
-	// Add the GeoJSON layer to the map with color coding
-	L.geoJSON(data, {
-		style: function (feature) {
-			return {
-				color: getColor(feature.properties.event), // Border color
-				weight: 3, // Border width
-				opacity: config.opacity.polygon, // Outer border opacity
-				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
-			};
-		},
-		onEachFeature: function (feature, layer) {
-			if (feature.properties) {
-				layer.bindPopup(getPopupText(feature));
-			}
-
-			layer.on("popupopen", function () {
-				console.log("Popup opened for feature:", feature);
-				window.cachedAlertText = getAlertText(feature);
-			});
-		},
-		id: "weather-alerts",
-	})
-		.addTo(map)
-		.bringToFront();
-}
-
-function redrawAlerts() {
-	if (current_features.length <= 0) updateWeatherAlerts();
-	else drawAlerts(current_features);
-}
-
 // Copilot wrote this constant and the function for .onAdd
 // Add countdown timer to the map
 const countdownDiv = L.control({ position: "bottomright" });
@@ -326,74 +273,56 @@ countdownDiv.onAdd = function () {
 countdownDiv.addTo(map);
 
 function getSevereStorm(feature) {
-	try {
-		let weatherEvent = feature.properties.event;
-		let weatherParams = feature.properties.parameters || {};
-		if (feature.properties.description == undefined)
-			throw new Error("No description found.");
-		let hailSize = weatherParams.maxHailSize || ["N/A"];
-		let windSpeed = weatherParams.maxWindGust || ["N/A"];
-		let tornadoPossible = weatherParams.tornadoDetection || ["N/A"];
-		let hailSource = weatherParams.hailThreat || ["Radar Indicated"];
-		let windSource = weatherParams.windThreat || ["Radar Indicated"];
-		let torSeverity = weatherParams.tornadoDamageThreat || [""];
+	let weatherEvent = feature.properties.event;
+	let weatherParams = feature.properties.parameters;
+	let hailSize = weatherParams.maxHailSize || ["N/A"];
+	let windSpeed = weatherParams.maxWindGust || ["N/A"];
+	let tornadoPossible = weatherParams.tornadoDetection || ["N/A"];
+	let hailSource = weatherParams.hailThreat || ["Radar Indicated"];
+	let windSource = weatherParams.windThreat || ["Radar Indicated"];
+	let torSeverity = weatherParams.tornadoDamageThreat || [""];
 
-		let params = {
-			event: weatherEvent,
-			expires: feature.properties.expires,
-			isDefault: false,
-			description: feature.properties.description,
-			parameters: {
-				hail: {
-					maxHail: hailSize[0],
-					radarIndicated: hailSource[0].toTitleCase(),
-				},
-				wind: {
-					windSpeed: windSpeed[0],
-					radarIndicated: windSource[0].toTitleCase(),
-				},
-				tornado: {
-					possible: tornadoPossible[0].toTitleCase(),
-					severity: torSeverity[0].toTitleCase(),
-				},
-				origionalFeature: feature,
+	let params = {
+		event: weatherEvent,
+		expires: feature.properties.expires,
+		isDefault: false,
+		description: feature.properties.description,
+		parameters: {
+			hail: {
+				maxHail: hailSize[0],
+				radarIndicated: hailSource[0].toTitleCase(),
 			},
-		};
-
-		// In case no hail or is 0.00"
-		if (params.parameters.hail.maxHail == "0.00") {
-			params.parameters.hail.maxHail = "N/A";
-		}
-
-		// In case no wind or is 0mph
-		if (params.parameters.wind.windSpeed == "0mph") {
-			params.parameters.wind.windSpeed = "N/A";
-		}
-
-		// In case hail has bugged with SWS
-		if (
-			!params.parameters.hail.maxHail.includes('"') &&
-			params.parameters.hail.maxHail != "N/A"
-		) {
-			params.parameters.hail.maxHail += '"';
-		}
-
-		return params;
-	} catch (e) {
-		console.error(e);
-		return {
-			event: "Error",
-			expires: "N/A",
-			description: "An error occurred while parsing the storm data.",
-			isDefault: false,
-			parameters: {
-				hail: { maxHail: "N/A", radarIndicated: "Radar Indicated" },
-				wind: { windSpeed: "N/A", radarIndicated: "Radar Indicated" },
-				tornado: { possible: "N/A", severity: "" },
-				origionalFeature: feature,
+			wind: {
+				windSpeed: windSpeed[0],
+				radarIndicated: windSource[0].toTitleCase(),
 			},
-		};
+			tornado: {
+				possible: tornadoPossible[0].toTitleCase(),
+				severity: torSeverity[0].toTitleCase(),
+			},
+			origionalFeature: feature,
+		},
+	};
+
+	// In case no hail or is 0.00"
+	if (params.parameters.hail.maxHail == "0.00") {
+		params.parameters.hail.maxHail = "N/A";
 	}
+
+	// In case no wind or is 0mph
+	if (params.parameters.wind.windSpeed == "0mph") {
+		params.parameters.wind.windSpeed = "N/A";
+	}
+
+	// In case hail has bugged with SWS
+	if (
+		!params.parameters.hail.maxHail.includes('"') &&
+		params.parameters.hail.maxHail != "N/A"
+	) {
+		params.parameters.hail.maxHail += '"';
+	}
+
+	return params;
 }
 
 function getDefaults(feature) {

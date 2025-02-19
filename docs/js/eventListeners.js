@@ -18,7 +18,6 @@ document.onreadystatechange = () => {
 	updateRadarLayer();
 	addCountyBorders();
 	updateCountdown();
-	fetchCountyBorders();
 
 	updateWeatherAlerts(true);
 };
