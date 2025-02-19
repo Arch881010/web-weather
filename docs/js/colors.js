@@ -72,10 +72,6 @@ function convertToText(text) {
 		return "Dust";
 	}
 
-	if (text.includes("Snow")) {
-		return "Snow";
-	}
-
 	console.warn(
 		"Could not find alert type for",
 		text + ", so we went with default."
@@ -101,6 +97,5 @@ const colorsArray = {
 	"Cold": "#ffffff",
 	"County": "#A9A9A9",
 	"Dust": "#BDB76B",
-	"Snow": "#ffffff",
 	"Default": "#ffffff",
 };
