@@ -68,26 +68,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check if user is github-actions bot
-        id: check_user
-        run: |
-          if [ "${{ github.actor }}" != "github-actions[bot]" ]; then
-            echo "This workflow can only be run by the github-actions bot."
-            exit 0
-          fi
       - name: Checkout
-        if: steps.check_user.outputs.result == 'true'
         uses: actions/checkout@v4
       - name: Setup Pages
-        if: steps.check_user.outputs.result == 'true'
         uses: actions/configure-pages@v5
       - name: Upload artifact
-        if: steps.check_user.outputs.result == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload entire repository
           path: './docs/'
       - name: Deploy to GitHub Pages
-        if: steps.check_user.outputs.result == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
