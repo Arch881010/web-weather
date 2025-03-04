@@ -1,5 +1,7 @@
 /** @format */
 
+const cachedWatches = {};
+
 async function fetchKMZToGeoJSON(kmzUrl) {
 	try {
 		console.log(`Fetching KMZ from URL: ${kmzUrl}`);
@@ -199,7 +201,12 @@ async function fetchWatchDescription(id) {
 			4,
 			"0"
 		)}.html`;
-		console.log(`Fetching watch description from URL: ${watchURL}`);
+		
+		if (cachedWatches[id] !== undefined) {
+			console.info("Already cached the text for ww#" + id);
+			return cachedWatches[id];
+		}
+
 		const response = await fetch(watchURL);
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
@@ -207,7 +214,7 @@ async function fetchWatchDescription(id) {
 		const text = await response.text();
 		const doc = new DOMParser().parseFromString(text, "text/html");
 		const fullDesc = doc.querySelectorAll("pre")[0].innerHTML;
-		console.log(`Successfully fetched watch description`);
+		cachedWatches[id] = fullDesc;
 		return fullDesc;
 	} catch (error) {
 		console.error("Error fetching watch description:", error);
