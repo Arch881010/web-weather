@@ -1,7 +1,10 @@
 /** @format */
 
+const cachedWatches = {};
+
 async function fetchKMZToGeoJSON(kmzUrl) {
 	try {
+		console.log(`Fetching KMZ from URL: ${kmzUrl}`);
 		const response = await fetch(kmzUrl);
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
@@ -15,11 +18,15 @@ async function fetchKMZToGeoJSON(kmzUrl) {
 			throw new Error("No KML file found in the KMZ archive");
 		}
 		const kmlText = await zip.files[kmlFile].async("string");
+		//console.warn(kmlText);
 
 		const parser = new DOMParser();
 		const kml = parser.parseFromString(kmlText, "application/xml");
 
+		//console.warn(kml);
+
 		const geojson = toGeoJSON.kml(kml);
+		console.log(`Successfully converted KML to GeoJSON`);
 		return geojson.features;
 	} catch (error) {
 		console.error("Error fetching or processing KMZ file:", error);
@@ -27,14 +34,69 @@ async function fetchKMZToGeoJSON(kmzUrl) {
 	}
 }
 
+async function getKMZsfromKMZ(kmzUrl) {
+	try {
+		console.log(`Fetching KMZ from URL: ${kmzUrl}`);
+		const response = await fetch(kmzUrl);
+		if (!response.ok) {
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+		const buffer = await response.arrayBuffer();
+		const zip = await JSZip.loadAsync(buffer);
+		const kmlFile = Object.keys(zip.files).find((filename) =>
+			filename.endsWith(".kml")
+		);
+		if (!kmlFile) {
+			throw new Error("No KML file found in the KMZ archive");
+		}
+		const kmlText = await zip.files[kmlFile].async("string");
+		const parser = new DOMParser();
+		const kml = parser.parseFromString(kmlText, "application/xml");
+		const links = kml.querySelectorAll("Link > href");
+		const hrefs = Array.from(links)
+			.map((link) => link.textContent)
+			.filter((href) =>
+				/https:\/\/www\.spc\.noaa\.gov\/products\/watch\/WW\d{4}_SAW\.kmz/.test(
+					href
+				)
+			);
+		if (hrefs.length === 0) {
+			throw new Error("No valid href links found in the KML file");
+		}
+		console.log(hrefs);
+		//console.log(`Found href links: ${hrefs}`);
+		return hrefs;
+	} catch (error) {
+		console.error("Error fetching or processing KMZ file:", error);
+		return [];
+	}
+}
+
 async function getWatches() {
-    let kmzUrl = "https://www.spc.noaa.gov/products/watch/ActiveWW.kmz";
-    if (config.dev) kmzUrl = "./test-data/ww/2025/WW0008_SAW.kmz";
+	let kmzUrl = "https://www.spc.noaa.gov/products/watch/ActiveWW.kmz";
+	if (config.dev) kmzUrl = "./test-data/ww/2025/WW0008_SAW.kmz";
 
 	try {
-		const geojsonArray = await fetchKMZToGeoJSON(kmzUrl);
+		let kmlFilesToFetch = [];
+		let geojsonArray = [];
+
+		if (kmzUrl != "./test-data/ww/2025/WW0008_SAW.kmz") {
+			kmlFilesToFetch = await getKMZsfromKMZ(kmzUrl);
+			console.log();
+			for (const link of kmlFilesToFetch) {
+				console.log(`Processing KML file: ${link}`);
+				let tempgeojsonArray = await fetchKMZToGeoJSON(link);
+				for (const feature of tempgeojsonArray) {
+					geojsonArray.push(feature);
+				}
+			}
+		} else {
+			geojsonArray = await fetchKMZToGeoJSON(kmzUrl);
+		}
+
 		const result = await Promise.all(
 			geojsonArray.map(async (feature) => {
+				console.log(`Processing feature: ${feature.id}`);
 				const properties = {
 					id: feature.id,
 					type: "wx:Alert",
@@ -119,12 +181,13 @@ async function getWatches() {
 								possible: (properties.tornadoDetection || "N/A").toTitleCase(),
 								severity: (properties.tornadoDamageThreat || "").toTitleCase(),
 							},
-							origionalFeature: feature,
+							originalFeature: feature,
 						},
 					},
 				};
 			})
 		);
+		console.log(`Successfully processed all features`);
 		return result;
 	} catch (error) {
 		console.error("Error fetching or processing KMZ file:", error);
@@ -138,6 +201,12 @@ async function fetchWatchDescription(id) {
 			4,
 			"0"
 		)}.html`;
+		
+		if (cachedWatches[id] !== undefined) {
+			console.info("Already cached the text for ww#" + id);
+			return cachedWatches[id];
+		}
+
 		const response = await fetch(watchURL);
 		if (!response.ok) {
 			throw new Error(`HTTP error! status: ${response.status}`);
@@ -145,6 +214,7 @@ async function fetchWatchDescription(id) {
 		const text = await response.text();
 		const doc = new DOMParser().parseFromString(text, "text/html");
 		const fullDesc = doc.querySelectorAll("pre")[0].innerHTML;
+		cachedWatches[id] = fullDesc;
 		return fullDesc;
 	} catch (error) {
 		console.error("Error fetching watch description:", error);
