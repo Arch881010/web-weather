@@ -1,9 +1,10 @@
-name: Update and Deploy Pipeline
+name: Update, Browersify, and Deploy Pipeline
 
 on:
   push:
     branches:
       - main
+      - cleanup-browserify
 
 permissions:
   contents: write
@@ -59,7 +60,31 @@ jobs:
           git push origin main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+  compile-js:
+    name: Compile JavaScript
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile JavaScript into one file
+        run: |
+          npx browserify docs/js/*.js -o docs/js/bundle.js
+
+      - name: Commit and push changes
+        run: |
+          git add docs/js/bundle.js
+          git commit -m "(Chore): Compile JavaScript"
   deploy:
     name: Deploy to GitHub Pages
     needs: update-version

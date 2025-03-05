@@ -92,7 +92,7 @@ const saveSettings = () => {
 	config.opacity.polygon = opacityPolygon;
 	config.opacity.countyBorders = opacityCountyBorders;
 
-	redrawAlerts();
+	redrawPolygons();
 	updateRadarLayer();
 	addCountyBorders();
 };
