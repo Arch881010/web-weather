@@ -13,15 +13,6 @@ document.addEventListener("visibilitychange", () => {
 	forceUpdate();
 });
 
-// Hide the loading screen once the map is fully loaded
-document.onreadystatechange = () => {
-	updateRadarLayer();
-	addCountyBorders();
-	updateCountdown();
-	fetchCountyBorders();
-
-	updateWeatherAlerts(true);
-};
 
 document.addEventListener("mapLoaded", () => {
 	// Copilot
@@ -44,6 +35,11 @@ document.addEventListener("mapLoaded", () => {
 			document.getElementById("recent-commit").textContent =
 				data["recent-commit"];
 		});
+	updateRadarLayer();
+	addCountyBorders();
+	fetchCountyBorders();
+
+	updateWeatherAlerts();
 });
 
 // Copilot
@@ -79,5 +75,6 @@ document.addEventListener("DOMContentLoaded", function () {
 			modal.style.display = "none";
 		}
 	};
+	updateCountdown();
 });
 // EOC

@@ -96,7 +96,7 @@ async function getWatches() {
 
 		const result = await Promise.all(
 			geojsonArray.map(async (feature) => {
-				console.log(`Processing feature: ${feature.id}`);
+				console.log(`Processing feature: ${feature}`);
 				const properties = {
 					id: feature.id,
 					type: "wx:Alert",
@@ -113,6 +113,7 @@ async function getWatches() {
 
 				// Fetch the full description
 				const idMatch = properties.event.match(/WW (\d+)/);
+				console.error(idMatch);
 				if (idMatch) {
 					const id = idMatch[1];
 					properties.full_desc = await fetchWatchDescription(id);
@@ -124,7 +125,17 @@ async function getWatches() {
 
 				const currentEvent = properties.event.toTitleCase();
 				const watchNumber = currentEvent.match(/\d+/);
-				const watchType = currentEvent.match(/(Tornado|Severe Thunderstorm)/);
+				const watchType = currentEvent.match(/(Tornado|Severe Thunderstorm|Severe Tstm)/);
+				const strWatchType = [];
+				try {
+					strWatchType[0] = watchType["0"];
+				} catch (e) {
+					strWatchType = "Unknown";
+				}
+
+				if (strWatchType == "Severe Tstm") strWatchType = "Severe Thunderstorm";
+
+				console.info(watchType[0] + "|" + currentEvent);
 
 				// Extract end time from the event string
 				const currentEventTime = currentEvent.split(" ");
@@ -157,7 +168,7 @@ async function getWatches() {
 					type: "Feature",
 					geometry: feature.geometry,
 					properties: {
-						event: `${watchType[0]} Watch #${watchNumber}`,
+						event: `${strWatchType} Watch #${watchNumber}`,
 						senderName: "Storm Prediction Center",
 						sent: startTime,
 						expires: endTime,

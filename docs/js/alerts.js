@@ -1,16 +1,6 @@
 // Function to fetch and update weather alerts
-function updateWeatherAlerts(firstTime) {
-    if (userSettings.opacity.polygon == 0) {
-      if (firstTime || false) {
-        let alreadyTriggered = window.alreadyTriggered || false;
-        if (!alreadyTriggered) {
-          document.dispatchEvent(mapLoadedEvent);
-        } else {
-          console.warn('mapLoadedEvent already triggered, skipping.');
-        }
-  
-        window.alreadyTriggered = true;
-      }
+function updateWeatherAlerts() {
+    if (userSettings.opacity.polygon == 0) {  
       console.error(
         'Polygon opacity is set to 0, no need to load new weather alerts, skipping.'
       );
@@ -76,17 +66,6 @@ function updateWeatherAlerts(firstTime) {
   
         drawPolygons(data);
         current_features = data;
-        if (firstTime || false) {
-          let alreadyTriggered = window.alreadyTriggered || false;
-          if (!alreadyTriggered) {
-            document.dispatchEvent(mapLoadedEvent);
-          } else {
-            console.warn('mapLoadedEvent already triggered, skipping.');
-          }
-  
-          window.alreadyTriggered = true;
-        }
       });
   }
 
-  

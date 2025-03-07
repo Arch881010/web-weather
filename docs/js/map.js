@@ -17,18 +17,27 @@ if (config.dev) {
 
 // Creates a new map
 const map = L.map('map').setView([39.8283, -98.5795], 5); // Centered on the US
+document.dispatchEvent(mapLoadedEvent);
 
 // Add state borders to the map
-map.on('zoomend', addCountyBorders);
+//map.on('zoomend', addCountyBorders);
 window.countyBordersShown = false;
 
 async function fetchCountyBorders() {
   counties = await (await fetch('./json/counties.json')).json();
 }
 
+function getZoom() {
+  try {
+    return map.getZoom();
+  } catch(e) {
+    return 9;
+  }
+}
+
 function addCountyBorders() {
   // If the zoom is < 9, that means we are zoomed out and can hide the county borders
-  if (map.getZoom() < 9) {
+  if (getZoom() < 9) {
     if (countyBordersLayer) {
       map.removeLayer(countyBordersLayer);
       countyBordersLayer = null;
@@ -109,11 +118,15 @@ function getPopupText(feature) {
 
 // Function to clear existing layers
 function clearLayers(layerIds) {
-  map.eachLayer((layer) => {
-    if (layer.options && layerIds.includes(layer.options.id)) {
-      map.removeLayer(layer);
-    }
-  });
+  try {
+    map.eachLayer((layer) => {
+      if (layer.options && layerIds.includes(layer.options.id)) {
+        map.removeLayer(layer);
+      }
+    });
+  } catch (e) {
+    console.warn(e);
+  }
 }
 
 // Function to fetch and update radar layer
