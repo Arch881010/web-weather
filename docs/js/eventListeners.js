@@ -40,6 +40,7 @@ document.addEventListener("mapLoaded", () => {
 	fetchCountyBorders();
 
 	updateWeatherAlerts();
+	addCountdown().then(() => updateCountdown());
 });
 
 // Copilot
@@ -75,6 +76,6 @@ document.addEventListener("DOMContentLoaded", function () {
 			modal.style.display = "none";
 		}
 	};
-	updateCountdown();
+	//updateCountdown();
 });
 // EOC
