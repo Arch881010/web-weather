@@ -11,11 +11,10 @@ const default_config = {
 		watches: true,
 	},
 	radarTilemap: "n0q",
-	dev: false
+	dev: false,
 };
 
 const config = default_config;
-
 
 const loadSettings = () => {
 	const savedSettings = JSON.parse(localStorage.getItem("weatherAppSettings"));
@@ -30,7 +29,8 @@ const loadSettings = () => {
 			savedSettings.opacity.polygon * 100;
 		document.getElementById("opacity-county-borders").value =
 			savedSettings.opacity.countyBorders * 100;
-		document.getElementById("radar-tilemap").value = savedSettings.radar_tilemap;
+		document.getElementById("radar-tilemap").value =
+			savedSettings.radar_tilemap;
 
 		// Update config object
 		config.opacity.radar = savedSettings.opacity.radar;
@@ -54,7 +54,7 @@ const loadSettings = () => {
 		config.opacity.polygon_fill = 0.15;
 		config.opacity.polygon = 1;
 		config.opacity.countyBorders = 1;
-		
+
 		return {
 			saveSettings: false,
 			opacity: {
@@ -64,7 +64,7 @@ const loadSettings = () => {
 				countyBorders: 1,
 			},
 			radar_tilemap: "n0q",
-		}
+		};
 	}
 };
 

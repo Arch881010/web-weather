@@ -13,7 +13,6 @@ document.addEventListener("visibilitychange", () => {
 	forceUpdate();
 });
 
-
 document.addEventListener("mapLoaded", () => {
 	// Copilot
 	// Adds ease-out transition to the loading screen then removes it.

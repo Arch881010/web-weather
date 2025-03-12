@@ -125,7 +125,9 @@ async function getWatches() {
 
 				const currentEvent = properties.event.toTitleCase();
 				const watchNumber = currentEvent.match(/\d+/);
-				const watchType = currentEvent.match(/(Tornado|Severe Thunderstorm|Severe Tstm)/);
+				const watchType = currentEvent.match(
+					/(Tornado|Severe Thunderstorm|Severe Tstm)/
+				);
 				const strWatchType = [];
 				try {
 					strWatchType[0] = watchType["0"];
@@ -212,7 +214,7 @@ async function fetchWatchDescription(id) {
 			4,
 			"0"
 		)}.html`;
-		
+
 		if (cachedWatches[id] !== undefined) {
 			console.info("Already cached the text for ww#" + id);
 			return cachedWatches[id];
