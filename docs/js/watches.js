@@ -128,7 +128,7 @@ async function getWatches() {
 				const watchType = currentEvent.match(
 					/(Tornado|Severe Thunderstorm|Severe Tstm)/
 				);
-				const strWatchType = [];
+				let strWatchType = [];
 				try {
 					strWatchType[0] = watchType["0"];
 				} catch (e) {
