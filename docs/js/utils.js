@@ -10,111 +10,127 @@ function timePassedAsSeconds(time) {
 /** @format */
 
 function convertToText(text) {
+	textArr = text.split("#");
+	if (textArr.length > 1) text = textArr[0];
 	text = text.trim().toTitleCase(); // <- This is here because I'm probably gonna make a mistake somewhere
-	if (
-		text.includes("Avalanche") ||
-		text.includes("Blizzard") ||
-		text.includes("Snow") ||
-		text.includes("Winter") ||
-		text.includes("Winter")
-	) {
-		return "Cold";
-	}
-
-	if (text.includes("Tornado Watch")) {
-		return "Tornado Watch";
-	}
-
-	if (text.includes("Severe Thunderstorm Watch")) {
-		return "Severe Thunderstorm Watch";
-	}
-
-	if (text.includes("Flood Watch")) {
-		return "Flood Watch";
-	}
-
-	if (text.includes("Watch")) {
-		//return "Watch";
-	}
-
-	if (text.includes("Tornado")) {
-		return "Tornado";
-	}
-
-	if (text.includes("Severe Thunderstorm")) {
-		return "Severe Thunderstorm";
-	}
-
-	if (text.includes("Flood")) {
-		return "Flood";
-	}
-
-	if (text.includes("Heat")) {
-		return "Heat";
-	}
-
-	if (text.includes("Winter Storm")) {
-		return "Winter Storm";
-	}
-
-	if (text.includes("Fire")) {
-		return "Fire";
-	}
-
-	if (text.includes("Fog")) {
-		return "Fog";
-	}
-
-	if (text.includes("Marine")) {
-		return "Marine";
-	}
-
-	if (text.includes("Weather Statement")) {
-		return "Weather Statement";
-	}
-
-	if (text.includes("County")) {
-		return "County";
-	}
-
-	if (text.includes("Dust")) {
-		return "Dust";
-	}
-
-	if (text.includes("Snow")) {
-		return "Snow";
-	}
-
-	console.warn(
-		"Could not find alert type for",
-		text + ", so we went with default."
-	);
-	return "Default";
+	console.log(text);
+	return text;
 }
 
 // Define a function to get the color based on the type of the alert
 function getColor(text) {
-	return colorsArray[convertToText(text)];
+	const color = colorsArray[convertToText(text)];
+	console.warn(color);
+	return (color || colorsArray["Default"]);
 }
 
 const colorsArray = {
-	"Severe Thunderstorm": "#ff9900",
-	"Tornado": "#ff0000",
-	"Flood": "#00ff00",
-	"Weather Statement": "#add8e6",
-	"Marine": "#E0B0FF",
-	"Tornado Watch": "#990f02",
+    "Tornado Warning": "#ff0000",
+    "Severe Thunderstorm Warning": "#ffa500",
+    "Flash Flood Warning": "#8b0000",
+    "Tsunami Warning": "#fd6347",
+    "Inland Hurricane Wind Warning": "#cd5c5c",
+    "Hurricane Force Wind Warning": "#cd5c5c",
+    "Hurricane Warning": "#dc143c",
+    "Typhoon Warning": "#dc143c",
+    "Storm Warning": "#dda0dd",
+    "Blizzard Warning": "#ff4500",
+    "Ice Storm Warning": "#8b008b",
+    "Heavy Snow Warning": "#8a2be2",
+    "Tropical Storm Warning": "#b22222",
+    "Winter Storm Warning": "#ff69b4",
+    "Inland Tropical Storm Warning": "#b22222",
+    "Coastal Flood Warning": "#228b22",
+    "Lakeshore Flood Warning": "#228b22",
+    "High Surf Warning": "#228b22",
+    "Heavy Sleet Warning": "#87ceeb",
+    "Flood Warning": "#00ff00",
+	"Flood Advisory": "#00ff7f",
+    "High Wind Warning": "#daa520",
+    "Lake Effect Snow Warning": "#008b8b",
+    "Excessive Heat Warning": "#c71585",
+    "Red Flag Warning": "#ff1493",
+    "Wind Chill Warning": "#b0c4de",
+    "Avalanche Warning": "#1e90ff",
+    "Dust Storm Warning": "#BDB76B",
+    "Freeze Warning": "#00ffff",
+    "Gale Warning": "#9400d3",
+    "Flash Flood Statement": "#9acd32",
+    "Special Marine Warning": "#db7093",
+    "Severe Weather Statement": "#00ffff",
+    "Tornado Watch": "#ffff00",
 	"Severe Thunderstorm Watch": "#8B8000",
-	"Flood Watch": "#006400",
-	"Watch": "#ff00d8",
-	"Cold": "#ffffff",
-	"County": "#A9A9A9",
-	"Dust": "#BDB76B",
-	"Snow": "#ffffff",
-	"Default": "#ffffff",
+    "Flash Flood Watch": "#32cd32",
+    "Hurricane Watch": "#ff00ff",
+    "Typhoon Watch": "#ff00ff",
+    "Hurricane Local Statement": "#9370db",
+    "Typhoon Local Statement": "#9370db",
+    "Snow And Blowing Snow Advisory": "#b0e0e6",
+    "Freezing Rain Advisory": "#6a5acd",
+    "Freezing Drizzle Advisory": "#6a5acd",
+    "Sleet Advisory": "#7b68ee",
+    "Winter Weather Advisory": "#deb887",
+    "Lake Effect Snow Advisory": "#48d1cc",
+    "Wind Chill Advisory": "#afeeee",
+    "Heat Advisory": "#ff7f50",
+    "High Surf Advisory": "#ba55d3",
+    "Blowing Snow Advisory": "#add8e6",
+    "Snow Advisory": "#6699cc",
+    "Heavy Freezing Spray Warning": "#00bfff",
+    "Dense Smoke Advisory": "#f0e68c",
+    "Small Craft Advisory": "#d8bfd8",
+    "Dense Fog Advisory": "#708090",
+    "Marine Weather Statement": "#9932cc",
+    "Lake Wind Advisory": "#d2b48c",
+    "Wind Advisory": "#90ee90",
+    "Blowing Dust Advisory": "#BDB76B",
+	"Dust Advisory": "#BDB76B",
+    "Frost Advisory": "#6495ed",
+    "Ashfall Advisory": "#a9a9a9",
+    "Freezing Fog Advisory": "#008080",
+    "Air Stagnation Advisory": "#808080",
+    "Tsunami Watch": "#ff00ff",
+    "Coastal Flood Watch": "#66cdaa",
+    "Lakeshore Flood Watch": "#66cdaa",
+    "Flood Watch": "#2e8b57",
+    "Blizzard Watch": "#adff2f",
+    "Inland Tropical Storm Watch": "#f08080",
+    "Tropical Storm Watch": "#f08080",
+    "Inland Hurricane Wind Watch": "#ffa07a",
+    "Winter Storm Watch": "#00008b",
+    "Lake Effect Snow Watch": "#cd853f",
+    "High Wind Watch": "#b8860b",
+    "Excessive Heat Watch": "#800000",
+    "Wind Chill Watch": "#5f9ea0",
+    "Freeze Watch": "#000080",
+    "Fire Weather Watch": "#ffdead",
+    "Avalanche Watch": "#f4a460",
+    "Earthquake Warning": "#8b4513",
+    "Local Area Emergency": "#c0c0c0",
+    "Law Enforcement Warning": "#c0c0c0",
+    "911 Telephone Outage": "#c0c0c0",
+    "Hazardous Materials Warning": "#4b0082",
+    "Nuclear Hazard Warning": "#4b0082",
+    "Radiological Hazard Warning": "#4b0082",
+    "Civil Danger Warning": "#ffb6c1",
+    "Civil Emergency Message": "#ffb6c1",
+    "Evacuation - Immediate": "#7fff00",
+	"Evacuation Immediate": "#7fff00",
+    "Fire Warning": "#a0522d",
+    "Shelter In Place Warning": "#fa8072",
+    "Volcano Warning": "#696969",
+    "Coastal Flood Statement": "#6b8e23",
+    "Lakeshore Flood Statement": "#6b8e23",
+    "Flood Statement": "#00ff7f",
+    "Special Weather Statement": "#add8e6",
+    "Short Term Forecast": "#8fbc8f",
+    "Fire Danger Statement": "#e9967a",
+    "Hazardous Weather Outlook": "#eee8aa",
+    "Child Abduction Emergency": "#ffd700",
+    "Test": "#f0ffff",
+    "Default": "#ffffff"
 };
 
-// Initialize the map
 
 const log_features = ["Tornado Watch", "Severe Thunderstorm Watch"];
 
@@ -130,7 +146,6 @@ if (config.dev) {
 }
 
 // Add state borders to the map
-//map.on('zoomend', addCountyBorders);
 window.countyBordersShown = false;
 
 async function fetchCountyBorders() {

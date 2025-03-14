@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Weather Map</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="./leaflet/leaflet.css" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
@@ -15,7 +15,7 @@
   <body>
     <div id="loading-screen">
       <div class="spinner"></div>
-      <p>Loading, please wait...</p>
+      <p id="loading-screen-text">Loading, please wait...</p>
     </div>
     <div id="map"></div>
     <div id="settings-panel" class="settings-content" style="display: none">
@@ -130,11 +130,11 @@
     <script src="./js/config.js"></script>
     <script src="./js/prototypes.js"></script>
     <script src="./js/utils.js"></script>
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="./leaflet/leaflet.js"></script>
     <script src="./js/watches.js"></script> 
     <script src="./js/taskbar.js"></script>
     <script src="./js/alerts.js"></script>
     <script src="./js/alertText.js"></script>
-    <script src="./js/map.js"></script> -->
+    <script src="./js/map.js"></script>
   </body>
 </html>
