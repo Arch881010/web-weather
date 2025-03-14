@@ -1,3 +1,10 @@
+# Web-Weather
+
+A very W.I.P Weather app :3
+feel free to contribute and/or request features!
+
 ### Notice
-Some of this code was generated with assistance of Copilot. This is denoted with copilot. If it's just copilot, EOC will be the part where copilot stopped writing unless specified. (some spots may not be denoted.)
-PLEASE note that not everything that copilot wrote is denoted, but most stuff that isn't denoted was human wrote.
+
+Leaflet is maintained locally (erm, through installing),
+beacuse of the reason of a bug on unpkg that made our website
+forever spin... thanks. 

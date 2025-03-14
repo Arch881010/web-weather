@@ -6,22 +6,20 @@ const mapLoadedEvent = new Event("mapLoaded", {
 	composed: true,
 });
 
+
+// Loading Screen... 
+// In case we are taking forever to load.
+setTimeout(() => {
+	const loadingScreenText = document.getElementById("loading-screen-text");
+	loadingScreenText.textContent = "Loading is taking longer than expected...\nTrying refreshing?";
+}, 60000);
+
 // Event listener to handle tab visibility change
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState != "visible") return;
 	if (timePassedAsSeconds(window.lastUpdate) < 60) return;
 	forceUpdate();
 });
-
-// Hide the loading screen once the map is fully loaded
-document.onreadystatechange = () => {
-	updateRadarLayer();
-	addCountyBorders();
-	updateCountdown();
-	fetchCountyBorders();
-
-	updateWeatherAlerts(true);
-};
 
 document.addEventListener("mapLoaded", () => {
 	// Copilot
@@ -44,6 +42,12 @@ document.addEventListener("mapLoaded", () => {
 			document.getElementById("recent-commit").textContent =
 				data["recent-commit"];
 		});
+	updateRadarLayer();
+	addCountyBorders();
+	fetchCountyBorders();
+
+	updateWeatherAlerts();
+	addCountdown().then(() => updateCountdown());
 });
 
 // Copilot
@@ -79,5 +83,6 @@ document.addEventListener("DOMContentLoaded", function () {
 			modal.style.display = "none";
 		}
 	};
+	//updateCountdown();
 });
 // EOC
