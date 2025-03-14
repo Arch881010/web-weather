@@ -25,6 +25,8 @@ function getColor(text) {
 const colorsArray = {
 	"Tornado Warning": "#ff0000",
 	"Severe Thunderstorm Warning": "#ffa500",
+	"Tornado Watch": "#840404",
+	"Severe Thunderstorm Watch": "#8B8000",
 	"Flash Flood Warning": "#8b0000",
 	"Tsunami Warning": "#fd6347",
 	"Inland Hurricane Wind Warning": "#cd5c5c",
@@ -56,8 +58,6 @@ const colorsArray = {
 	"Flash Flood Statement": "#9acd32",
 	"Special Marine Warning": "#db7093",
 	"Severe Weather Statement": "#00ffff",
-	"Tornado Watch": "#ffff00",
-	"Severe Thunderstorm Watch": "#8B8000",
 	"Flash Flood Watch": "#32cd32",
 	"Hurricane Watch": "#ff00ff",
 	"Typhoon Watch": "#ff00ff",
