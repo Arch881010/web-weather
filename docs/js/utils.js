@@ -13,14 +13,12 @@ function convertToText(text) {
 	textArr = text.split("#");
 	if (textArr.length > 1) text = textArr[0];
 	text = text.trim().toTitleCase(); // <- This is here because I'm probably gonna make a mistake somewhere
-	console.log(text);
 	return text;
 }
 
 // Define a function to get the color based on the type of the alert
 function getColor(text) {
 	const color = colorsArray[convertToText(text)];
-	console.warn(color);
 	return (color || colorsArray["Default"]);
 }
 
