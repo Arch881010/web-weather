@@ -1,5 +1,14 @@
 // Function to fetch and update weather alerts
 function updateWeatherAlerts() {
+
+	let url = config.urls.warnings;
+
+	if (config.dev) {
+		url = config.devUrls.warnings;
+	}
+
+	console.warn(url);
+
 	if (userSettings.opacity.polygon == 0) {
 		console.error(
 			"Polygon opacity is set to 0, no need to load new weather alerts, skipping."
@@ -9,20 +18,24 @@ function updateWeatherAlerts() {
 		return;
 	}
 
-	fetch(
-		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=250",
-		{
-			headers: {
-				"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
-			},
-		}
-	)
+	fetch(url, {
+		headers: {
+			"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
+		},
+	})
 		.then((response) => response.json())
 		.then(async (data) => {
 			// Remove features with null geometry
 			data.features = data.features.filter(
 				(feature) => feature.geometry !== null
 			);
+
+			for (feature of data.features) {
+				let torSeverity = feature.properties.parameters.tornadoDamageThreat || [""];
+			
+				feature.properties.event = fixText(torSeverity[0], feature.properties.event);
+				//console.log(feature.properties.event)
+			}
 
 			if ((localStorage.getItem("hideFloods") ?? true) == true) {
 				// Exclude Flood Warnings

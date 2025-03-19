@@ -86,3 +86,58 @@ document.addEventListener("DOMContentLoaded", function () {
 	//updateCountdown();
 });
 // EOC
+
+document.addEventListener('DOMContentLoaded', function() {
+	// Category button handling
+	const categoryButtons = document.querySelectorAll('.category-btn');
+	const settingsSections = document.querySelectorAll('.settings-section');
+	
+	categoryButtons.forEach(button => {
+	  button.addEventListener('click', function() {
+		const targetId = this.dataset.target;
+		
+		// Hide all sections
+		settingsSections.forEach(section => {
+		  section.classList.remove('active');
+		});
+		
+		// Remove active class from all buttons
+		categoryButtons.forEach(btn => {
+		  btn.classList.remove('active');
+		});
+		
+		// Show target section and make button active
+		document.getElementById(targetId).classList.add('active');
+		this.classList.add('active');
+	  });
+	});
+	
+	// Show General settings by default
+	document.querySelector('[data-target="general-settings"]').click();
+	
+	// Update number input display values
+	const numberInputs = document.querySelectorAll('input[type="number"]');
+	numberInputs.forEach(input => {
+	  const valueDisplay = input.nextElementSibling;
+	  
+	  // Initialize value
+	  valueDisplay.textContent = input.value + '%';
+	  
+	  // Update on change
+	  input.addEventListener('input', function() {
+		valueDisplay.textContent = this.value + '%';
+	  });
+	});
+	
+	// Open settings panel
+	document.getElementById('open-settings').addEventListener('click', () => {
+	  document.getElementById('settings-panel').style.display = 'flex';
+	});
+  
+	// Close settings panel and save settings
+	document.getElementById('close-settings').addEventListener('click', () => {
+	  console.info('Settings saved');
+	  saveSettings();
+	  document.getElementById('settings-panel').style.display = 'none';
+	});
+  });

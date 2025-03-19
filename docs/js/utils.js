@@ -16,6 +16,20 @@ function convertToText(text) {
 	return text;
 }
 
+function fixText(tag, text) {
+	tag = tag.toTitleCase() ?? "";
+	textToReturn = "";
+	console.log(tag);
+	if (text == "Tornado Warning") {
+		if (tag == "Considerable") textToReturn = "PDS Tornado Warning";
+		if (tag == "Catastrophic") textToReturn = "Tornado Emergency";
+	}
+
+	if (textToReturn == "") textToReturn = text.toTitleCase();
+	console.warn(textToReturn);
+	return textToReturn;
+}
+
 // Define a function to get the color based on the type of the alert
 function getColor(text) {
 	const color = colorsArray[convertToText(text)];
@@ -24,6 +38,8 @@ function getColor(text) {
 
 const colorsArray = {
 	"Tornado Warning": "#ff0000",
+	"Pds Tornado Warning": "#eb01eb",
+	"Tornado Emergency": "#eb01eb",
 	"Severe Thunderstorm Warning": "#ffa500",
 	"Tornado Watch": "#840404",
 	"Severe Thunderstorm Watch": "#8B8000",
@@ -168,9 +184,10 @@ function addCountyBorders() {
 		window.countyBordersShown = false;
 	} else {
 		if (!countyBordersLayer) {
+			color = getColor("county");
 			countyBordersLayer = L.geoJSON(counties, {
 				style: {
-					color: getColor("county"), // Light gray for border color
+					color: color, // Light gray for border color
 					weight: 3 * (map.getZoom() / 9), // Border width
 					opacity: config.opacity.countyBorders, // low opacity
 					fillOpacity: 0, // Make the polygon fill transparent
@@ -320,55 +337,6 @@ function updateCountdown(force) {
 	}, 1000);
 }
 
-function drawPolygons(data) {
-	// Add the black border around each polygon
-	clearLayers(["weather-alerts", "weather-alerts-border"]);
-
-	if (config.opacity.polygon == 0) return;
-
-	L.geoJSON(data, {
-		style: function (feature) {
-			return {
-				color: "black", // Outer border color
-				weight: 5, // Outer border width
-				opacity: config.opacity.polygon, // Outer border opacity
-				fillOpacity: 0, // Make the polygon fill transparent
-			};
-		},
-		id: "weather-alerts-border",
-	}).addTo(map);
-
-	// Add the GeoJSON layer to the map with color coding
-	L.geoJSON(data, {
-		style: function (feature) {
-			return {
-				color: getColor(feature.properties.event), // Border color
-				weight: 3, // Border width
-				opacity: config.opacity.polygon, // Outer border opacity
-				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
-			};
-		},
-		onEachFeature: function (feature, layer) {
-			if (feature.properties) {
-				layer.bindPopup(getPopupText(feature));
-			}
-
-			layer.on("popupopen", function () {
-				console.log("Popup opened for feature:", feature);
-				window.cachedAlertText = getAlertText(feature);
-			});
-		},
-		id: "weather-alerts",
-	})
-		.addTo(map)
-		.bringToFront();
-}
-
-function redrawPolygons() {
-	if (current_features.length <= 0) updateWeatherAlerts();
-	else drawPolygons(current_features);
-}
-
 function getSevereStorm(feature) {
 	try {
 		let weatherEvent = feature.properties.event;
@@ -383,6 +351,8 @@ function getSevereStorm(feature) {
 		let torSeverity = weatherParams.tornadoDamageThreat || [""];
 		if (typeof hailSource == Array) hailSource = hailSource[0];
 		if (typeof windSource == Array) windSource = windSource[0];
+
+		//weatherEvent = fixText(torSeverity[0], weatherEvent);
 
 		let params = {
 			event: weatherEvent,
@@ -425,8 +395,8 @@ function getSevereStorm(feature) {
 			params.parameters.hail.maxHail += '"';
 		}
 
-		if (params.parameters.hail.maxHail.replaceAll("\"", "") == "0.75")
-		console.warn(params);
+		if (params.parameters.hail.maxHail.replaceAll('"', "") == "0.75")
+			console.warn(params);
 
 		return params;
 	} catch (e) {

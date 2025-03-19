@@ -3,16 +3,30 @@
 const default_config = {
 	opacity: {
 		radar: 0.5,
-		polygon_fill: 0,
+		polygon_fill: 0.15,
 		polygon: 1,
-		countyBorders: 0.1,
+		countyBorders: 0.5,
 	},
 	show: {
 		watches: true,
 	},
 	radarTilemap: "n0q",
 	dev: false,
+	urls: {
+		warnings: "https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=300" 
+	},
+	devUrls: {
+		warnings: "./test-data/wa/2025/current.json"
+	}
 };
+
+function checkConfig() {
+	let data = localStorage.getItem("dev");
+	if (data) {
+		default_config.dev = true;
+	}
+};
+checkConfig();
 
 const config = default_config;
 
@@ -40,31 +54,16 @@ const loadSettings = () => {
 		config.radar = savedSettings.radar_tilemap;
 
 		config.show.watches = true;
-		return savedSettings;
+		return config;
 	} else {
 		// Set default values
-		document.getElementById("opacity-radar").value = 100;
-		document.getElementById("opacity-polygon-fill").value = 15;
-		document.getElementById("opacity-polygon").value = 100;
-		document.getElementById("opacity-county-borders").value = 100;
-		document.getElementById("radar-tilemap").value = "n0q";
+		document.getElementById("opacity-radar").value = default_config.opacity.radar * 100;
+		document.getElementById("opacity-polygon-fill").value = default_config.opacity.polygon_fill * 100;
+		document.getElementById("opacity-polygon").value = default_config.opacity.polygon * 100;
+		document.getElementById("opacity-county-borders").value = default_config.opacity.countyBorders;
+		document.getElementById("radar-tilemap").value = default_config.radarTilemap;
 
-		// Update config object
-		config.opacity.radar = 1;
-		config.opacity.polygon_fill = 0.15;
-		config.opacity.polygon = 1;
-		config.opacity.countyBorders = 1;
-
-		return {
-			saveSettings: false,
-			opacity: {
-				radar: 1,
-				polygon_fill: 0.15,
-				polygon: 1,
-				countyBorders: 1,
-			},
-			radar_tilemap: "n0q",
-		};
+		return config;
 	}
 };
 
