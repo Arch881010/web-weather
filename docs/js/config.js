@@ -7,9 +7,15 @@ const default_config = {
 		polygon: 1,
 		countyBorders: 0.5,
 	},
-	show: {
+	alerts: {
 		watches: true,
+		warnings: true,
+		advisories: true,
+		disabled_watches: [],
+		disabled_warnings: [],
+		disabled_advisories: []
 	},
+		
 	radarTilemap: "n0q",
 	dev: false,
 	urls: {
@@ -52,8 +58,12 @@ const loadSettings = () => {
 		config.opacity.polygon = savedSettings.opacity.polygon;
 		config.opacity.countyBorders = savedSettings.opacity.countyBorders;
 		config.radar = savedSettings.radar_tilemap;
+		try {
+			for (let key of savedSettings.alerts.keys()) {
+				config.alerts[key] = savedSettings.alerts[key];
+			}
+		} catch(err){};
 
-		config.show.watches = true;
 		return config;
 	} else {
 		// Set default values
@@ -62,6 +72,8 @@ const loadSettings = () => {
 		document.getElementById("opacity-polygon").value = default_config.opacity.polygon * 100;
 		document.getElementById("opacity-county-borders").value = default_config.opacity.countyBorders;
 		document.getElementById("radar-tilemap").value = default_config.radarTilemap;
+
+		editToggables();
 
 		return config;
 	}
@@ -110,4 +122,26 @@ const saveSettings = () => {
 	redrawPolygons();
 	updateRadarLayer();
 	addCountyBorders();
+	editToggables();
 };
+
+function editToggables() {
+	const toggables = ["toggle-warnings", "toggle-advisories", "toggle-watches", "toggle-flood", "toggle-tornado", "toggle-severe-thunderstorm"];
+	const warnToggables = ["toggle-flood", "toggle-tornado", "toggle-severe-thunderstorm"];
+	for (let id of toggables) {
+		const elm = document.getElementById(id);
+		console.error(elm.checked);
+		if (!elm.checked) {
+			let spltId = id.split("-");
+			let newId = "";
+			for (let i = 1; i < spltId.length; i++) {
+				newId += spltId[i] + "-";
+			}
+			newId = newId.slice(0, -1);
+			console.info(newId)
+			if (warnToggables.matchesAny(id)) {
+				config.alerts.disabled_warnings.push(newId.toSingular())
+			}
+		}
+	}
+}

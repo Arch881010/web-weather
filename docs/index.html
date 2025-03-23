@@ -106,6 +106,64 @@
         </label>
         <br />
       </div>
+      <div>
+        <h3>Alerts</h3>
+        <button id="alert-settings-button">Alert Settings</button>
+        <div id="alert-settings-panel" class="settings-content" style="display: none">
+          <h2>Alert Settings</h2>
+          <div>
+            <h3>Toggle Alerts</h3>
+            <label>
+              Watches:
+              <input type="checkbox" id="toggle-watches" checked />
+            </label>
+            <br />
+            <label>
+              Warnings:
+              <input type="checkbox" id="toggle-warnings" checked />
+            </label>
+            <br />
+            <label>
+              Advisories:
+              <input type="checkbox" id="toggle-advisories" checked />
+            </label>
+            <br />
+            <div id="alert-subtypes" style="display: block">
+              <h4>Alert Subtypes</h4>
+              <label>
+                Flood:
+                <input type="checkbox" id="toggle-flood" checked />
+              </label>
+              <br />
+              <label>
+                Tornado:
+                <input type="checkbox" id="toggle-tornado" checked />
+              </label>
+              <br />
+              <label>
+                Severe Thunderstorm:
+                <input type="checkbox" id="toggle-severe-thunderstorm" checked />
+              </label>
+              <br />
+            </div>
+          <button id="close-alert-settings">Close</button>
+        </div>
+        <script>
+          document.getElementById('alert-settings-button').addEventListener('click', function() {
+            document.getElementById('alert-settings-panel').style.display = 'block';
+          });
+
+          document.getElementById('close-alert-settings').addEventListener('click', function() {
+            document.getElementById('alert-settings-panel').style.display = 'none';
+          });
+
+          document.getElementById('toggle-warnings').addEventListener('change', function() {
+            document.getElementById('alert-subtypes').style.display = this.checked ? 'block' : 'none';
+          });
+        </script>
+        </div>
+      </div>
+      <!-- Should always be below any new things -->
       <button id="close-settings">Close</button>
       <div
         id="version-info"
