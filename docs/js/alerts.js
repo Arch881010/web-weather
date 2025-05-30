@@ -10,7 +10,7 @@ function updateWeatherAlerts() {
 	}
 
 	fetch(
-		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown&limit=250",
+		"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown",
 		{
 			headers: {
 				"User-Agent": "WIP Web Weather App (admin@arch1010.dev)",
