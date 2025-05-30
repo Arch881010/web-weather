@@ -1,5 +1,5 @@
 {
     "number": "0.2",
-    "time-updated": "Fri Mar 14 21:13:17 UTC 2025",
-    "recent-commit": "(Fix): Tornado Watch Color"
+    "time-updated": "Fri May 30 04:41:35 UTC 2025",
+    "recent-commit": "(Fix): Fixes alerts/watches/etc not loading (#24)"
 }
