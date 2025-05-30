@@ -22,9 +22,9 @@
     color: black;
     font-family: Arial, sans-serif;
     z-index: 1000;
-  }
+}
 
-  .reflectivity-labels {
+.reflectivity-labels {
     display: flex;
     justify-content: space-between;
     position: absolute;
@@ -33,4 +33,4 @@
     left: 0;
     font-size: 10px;
     color: gray;
-  }
+}
