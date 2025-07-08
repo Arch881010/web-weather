@@ -23,110 +23,138 @@ function getColor(text) {
 }
 
 const colorsArray = {
-	"Tornado Warning": "#ff0000",
-	"Severe Thunderstorm Warning": "#ffa500",
-	"Tornado Watch": "#840404",
-	"Severe Thunderstorm Watch": "#8B8000",
-	"Flash Flood Warning": "#8b0000",
-	"Tsunami Warning": "#fd6347",
-	"Inland Hurricane Wind Warning": "#cd5c5c",
-	"Hurricane Force Wind Warning": "#cd5c5c",
-	"Hurricane Warning": "#dc143c",
-	"Typhoon Warning": "#dc143c",
-	"Storm Warning": "#dda0dd",
-	"Blizzard Warning": "#ff4500",
-	"Ice Storm Warning": "#8b008b",
-	"Heavy Snow Warning": "#8a2be2",
-	"Tropical Storm Warning": "#b22222",
-	"Winter Storm Warning": "#ff69b4",
-	"Inland Tropical Storm Warning": "#b22222",
-	"Coastal Flood Warning": "#228b22",
-	"Lakeshore Flood Warning": "#228b22",
-	"High Surf Warning": "#228b22",
-	"Heavy Sleet Warning": "#87ceeb",
-	"Flood Warning": "#00ff00",
-	"Flood Advisory": "#00ff7f",
-	"High Wind Warning": "#daa520",
-	"Lake Effect Snow Warning": "#008b8b",
-	"Excessive Heat Warning": "#c71585",
-	"Red Flag Warning": "#ff1493",
-	"Wind Chill Warning": "#b0c4de",
-	"Avalanche Warning": "#1e90ff",
-	"Dust Storm Warning": "#BDB76B",
-	"Freeze Warning": "#00ffff",
-	"Gale Warning": "#9400d3",
-	"Flash Flood Statement": "#9acd32",
+	"Tsunami Warning": "#FD6347",
+	"Tornado Warning": "#FF0000",
+	"Extreme Wind Warning": "#FF8C00",
+	"Severe Thunderstorm Warning": "#FFA500",
+	"Flash Flood Warning": "#8B0000",
+	"Flash Flood Statement": "#8B0000",
+	"Severe Weather Statement": "#00FFFF",
+	"Shelter In Place Warning": "#FA8072",
+	"Evacuation Immediate": "#7FFF00",
+	"Civil Danger Warning": "#FFB6C1",
+	"Nuclear Power Plant Warning": "#4B0082",
+	"Radiological Hazard Warning": "#4B0082",
+	"Hazardous Materials Warning": "#4B0082",
+	"Fire Warning": "#A0522D",
+	"Civil Emergency Message": "#FFB6C1",
+	"Law Enforcement Warning": "#C0C0C0",
+	"Storm Surge Warning": "#B524F7",
+	"Hurricane Force Wind Warning": "#CD5C5C",
+	"Hurricane Warning": "#DC143C",
+	"Typhoon Warning": "#DC143C",
 	"Special Marine Warning": "#db7093",
-	"Severe Weather Statement": "#00ffff",
-	"Flash Flood Watch": "#32cd32",
-	"Hurricane Watch": "#ff00ff",
-	"Typhoon Watch": "#ff00ff",
-	"Hurricane Local Statement": "#9370db",
-	"Typhoon Local Statement": "#9370db",
-	"Snow And Blowing Snow Advisory": "#b0e0e6",
-	"Freezing Rain Advisory": "#6a5acd",
-	"Freezing Drizzle Advisory": "#6a5acd",
-	"Sleet Advisory": "#7b68ee",
-	"Winter Weather Advisory": "#deb887",
-	"Lake Effect Snow Advisory": "#48d1cc",
-	"Wind Chill Advisory": "#afeeee",
-	"Heat Advisory": "#ff7f50",
-	"High Surf Advisory": "#ba55d3",
-	"Blowing Snow Advisory": "#add8e6",
-	"Snow Advisory": "#6699cc",
-	"Heavy Freezing Spray Warning": "#00bfff",
-	"Dense Smoke Advisory": "#f0e68c",
-	"Small Craft Advisory": "#d8bfd8",
+	"Blizzard Warning": "#FF4500",
+	"Snow Squall Warning": "#C71585",
+	"Ice Storm Warning": "#8B008B",
+	"Heavy Freezing Spray Warning": "#00BFFF",
+	"Winter Storm Warning": "#FF69B4",
+	"Lake Effect Snow Warning": "#008B8B",
+	"Dust Storm Warning": "#FFE4C4",
+	"Blowing Dust Warning": "#FFE4C4",
+	"High Wind Warning": "#DAA520",
+	"Tropical Storm Warning": "#B22222",
+	"Storm Warning": "#9400D3",
+	"Tsunami Advisory": "#D2691E",
+	"Tsunami Watch": "#FF00FF",
+	"Avalanche Warning": "#1E90FF",
+	"Earthquake Warning": "#8B4513",
+	"Volcano Warning": "#2F4F4F",
+	"Ashfall Warning": "#A9A9A9",
+	"Flood Warning": "#00FF00",
+	"Coastal Flood Warning": "#228B22",
+	"Lakeshore Flood Warning": "#228B22",
+	"Ashfall Advisory": "#696969",
+	"High Surf Warning": "#228B22",
+	"Excessive Heat Warning": "#C71585",
+	"Tornado Watch": "#ffff00",
+	"Severe Thunderstorm Watch": "#8B8000",
+	"Flash Flood Watch": "#2E8B57",
+	"Gale Warning": "#DDA0DD",
+	"Flood Statement": "#00FF00",
+	"Extreme Cold Warning": "#0000FF",
+	"Freeze Warning": "#483D8B",
+	"Red Flag Warning": "#FF1493",
+	"Storm Surge Watch": "#DB7FF7",
+	"Hurricane Watch": "#FF00FF",
+	"Hurricane Force Wind Watch": "#9932CC",
+	"Typhoon Watch": "#FF00FF",
+	"Tropical Storm Watch": "#F08080",
+	"Storm Watch": "#FFE4B5",
+	"Tropical Cyclone Local Statement": "#FFE4B5",
+	"Winter Weather Advisory": "#7B68EE",
+	"Avalanche Advisory": "#CD853F",
+	"Cold Weather Advisory": "#AFEEEE",
+	"Heat Advisory": "#FF7F50",
+	"Flood Advisory": "#00FF7F",
+	"Coastal Flood Advisory": "#7CFC00",
+	"Lakeshore Flood Advisory": "#7CFC00",
+	"High Surf Advisory": "#BA55D3",
 	"Dense Fog Advisory": "#708090",
-	"Marine Weather Statement": "#9932cc",
-	"Lake Wind Advisory": "#d2b48c",
-	"Wind Advisory": "#90ee90",
-	"Blowing Dust Advisory": "#BDB76B",
+	"Dense Smoke Advisory": "#F0E68C",
+	"Small Craft Advisory": "#D8BFD8",
+	"Brisk Wind Advisory": "#D8BFD8",
+	"Hazardous Seas Warning": "#D8BFD8",
 	"Dust Advisory": "#BDB76B",
-	"Frost Advisory": "#6495ed",
-	"Ashfall Advisory": "#a9a9a9",
+	"Blowing Dust Advisory": "#BDB76B",
+	"Lake Wind Advisory": "#D2B48C",
+	"Wind Advisory": "#D2B48C",
+	"Frost Advisory": "#6495ED",
 	"Freezing Fog Advisory": "#008080",
-	"Air Stagnation Advisory": "#808080",
-	"Tsunami Watch": "#ff00ff",
-	"Coastal Flood Watch": "#66cdaa",
-	"Lakeshore Flood Watch": "#66cdaa",
-	"Flood Watch": "#2e8b57",
-	"Blizzard Watch": "#adff2f",
-	"Inland Tropical Storm Watch": "#f08080",
-	"Tropical Storm Watch": "#f08080",
-	"Inland Hurricane Wind Watch": "#ffa07a",
-	"Winter Storm Watch": "#00008b",
-	"Lake Effect Snow Watch": "#cd853f",
-	"High Wind Watch": "#b8860b",
+	"Freezing Spray Advisory": "#00BFFF",
+	"Low Water Advisory": "#A52A2A",
+	"Local Area Emergency": "#C0C0C0",
+	"Winter Storm Watch": "#4682B4",
+	"Rip Current Statement": "#40E0D0",
+	"Beach Hazards Statement": "#40E0D0",
+	"Gale Watch": "#FFC0CB",
+	"Avalanche Watch": "#F4A460",
+	"Hazardous Seas Watch": "#483D8B",
+	"Heavy Freezing Spray Watch": "#BC8F8F",
+	"Flood Watch": "#2E8B57",
+	"Coastal Flood Watch": "#66CDAA",
+	"Lakeshore Flood Watch": "#66CDAA",
+	"High Wind Watch": "#B8860B",
 	"Excessive Heat Watch": "#800000",
-	"Wind Chill Watch": "#5f9ea0",
-	"Freeze Watch": "#000080",
-	"Fire Weather Watch": "#ffdead",
-	"Avalanche Watch": "#f4a460",
-	"Earthquake Warning": "#8b4513",
-	"Local Area Emergency": "#c0c0c0",
-	"Law Enforcement Warning": "#c0c0c0",
-	"911 Telephone Outage": "#c0c0c0",
-	"Hazardous Materials Warning": "#4b0082",
-	"Nuclear Hazard Warning": "#4b0082",
-	"Radiological Hazard Warning": "#4b0082",
-	"Civil Danger Warning": "#ffb6c1",
-	"Civil Emergency Message": "#ffb6c1",
-	"Evacuation - Immediate": "#7fff00",
-	"Evacuation Immediate": "#7fff00",
-	"Fire Warning": "#a0522d",
-	"Shelter In Place Warning": "#fa8072",
-	"Volcano Warning": "#696969",
-	"Coastal Flood Statement": "#6b8e23",
-	"Lakeshore Flood Statement": "#6b8e23",
-	"Flood Statement": "#00ff7f",
+	"Extreme Cold Watch": "#5F9EA0",
+	"Freeze Watch": "#00FFFF",
+	"Fire Weather Watch": "#FFDEAD",
+	"Extreme Fire Danger": "#E9967A",
+	"911 Telephone Outage": "#C0C0C0",
+	"Coastal Flood Statement": "#6B8E23",
+	"Lakeshore Flood Statement": "#6B8E23",
 	"Special Weather Statement": "#add8e6",
-	"Short Term Forecast": "#8fbc8f",
-	"Fire Danger Statement": "#e9967a",
-	"Hazardous Weather Outlook": "#eee8aa",
-	"Child Abduction Emergency": "#ffd700",
-	"Test": "#f0ffff",
-	"Default": "#ffffff",
+	"Marine Weather Statement": "#9932cc",
+	"Air Quality Alert": "#808080",
+	"Air Stagnation Advisory": "#808080",
+	"Hazardous Weather Outlook": "#EEE8AA",
+	"Hydrologic Outlook": "#90EE90",
+	"Short Term Forecast": "#98FB98",
+	"Administrative Message": "#C0C0C0",
+	"Test": "#F0FFFF",
+	"Child Abduction Emergency": "#FFFFFF",
+	"Blue Alert": "#FFFFFF",
+
+	"Heavy Snow Warning": "#8A2BE2",
+	"Inland Tropical Storm Warning": "#B22222",
+	"Inland Hurricane Wind Warning": "#CD5C5C",
+	"Hurricane Local Statement": "#9370DB",
+	"Typhoon Local Statement": "#9370DB",
+	"Snow And Blowing Snow Advisory": "#B0E0E6",
+	"Freezing Rain Advisory": "#6A5ACD",
+	"Freezing Drizzle Advisory": "#6A5ACD",
+	"Sleet Advisory": "#7B68EE",
+	"Blowing Snow Advisory": "#ADD8E6",
+	"Snow Advisory": "#6699CC",
+	"Inland Tropical Storm Watch": "#F08080",
+	"Inland Hurricane Wind Watch": "#FFA07A",
+	"Wind Chill Warning": "#B0C4DE",
+	"Wind Chill Watch": "#5F9EA0",
+	"Wind Chill Advisory": "#AFEEEE",
+	"Heavy Sleet Warning": "#87CEEB",
+	"Fire Danger Statement": "#E9967A",
+	"Evacuation - Immediate": "#7FFF00",
+	"Default": "#FFFFFF",
 };
 
 const log_features = ["Tornado Watch", "Severe Thunderstorm Watch"];
@@ -181,6 +209,11 @@ function addCountyBorders() {
 				.addTo(map)
 				.bringToFront();
 			console.info("Showing county borders.");
+		} else {
+			countyBordersLayer.setStyle({
+				opacity: config.opacity.countyBorders,
+				weight: 3 * (map.getZoom() / 9),
+			});
 		}
 		window.countyBordersShown = true;
 	}
@@ -246,19 +279,41 @@ function clearLayers(layerIds) {
 
 // Function to fetch and update radar layer
 function updateRadarLayer() {
-	// Clear existing radar layers
-	clearLayers(["radar-layer"]);
 
+	// If the radar opacity is set to 0, skip loading new radar data and clear the layer if it exists
 	if (userSettings.opacity.radar == 0) {
 		console.error(
 			"Radar layer opacity is set to 0, no need to load new radar data, skipping."
 		);
+		clearLayers(["radar-layer"]);
 		return;
 	}
 
 	// Add the radar layer
 	radarTileMap = userSettings.radar_tilemap;
 	if (radarTileMap == undefined) radarTileMap = "n0q";
+
+	// Check if the radar layer already exists; update opacity if it does, otherwise add it
+	let radarLayerFound = false;
+	let currentType = "undefined";
+	if (map.eachLayer) {
+		map.eachLayer((layer) => {
+			if (layer.options && layer.options.id === "radar-layer") {
+				layer.setOpacity(config.opacity.radar);
+				radarLayerFound = true;
+				currentType = layer.options.layers;
+			}
+		});
+	}
+	if (radarLayerFound && currentType === `nexrad-${radarTileMap}-900913`) {
+		console.info("Radar layer opacity updated.");
+		return;
+	} else if (radarLayerFound) {
+		console.warn("Radar layer type changed, removing old layer.");
+		clearLayers(["radar-layer"]);
+	}
+	
+
 	L.tileLayer
 		.wms(
 			`https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/${radarTileMap}.cgi`,
@@ -273,7 +328,10 @@ function updateRadarLayer() {
 			}
 		)
 		.addTo(map);
+		console.info("Radar layer updated.");
 }
+
+
 
 async function addCountdown() {
 	// Add countdown timer to the map
@@ -322,6 +380,7 @@ function updateCountdown(force) {
 
 function drawPolygons(data) {
 	// Add the black border around each polygon
+	if (window.countdown)
 	clearLayers(["weather-alerts", "weather-alerts-border"]);
 
 	if (config.opacity.polygon == 0) return;
@@ -342,7 +401,7 @@ function drawPolygons(data) {
 	L.geoJSON(data, {
 		style: function (feature) {
 			return {
-				color: getColor(feature.properties.event), // Border color
+				color: feature.properties.color || getColor(feature.properties.event), // Border color
 				weight: 3, // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity

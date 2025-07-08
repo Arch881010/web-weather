@@ -52,35 +52,35 @@ document.addEventListener("mapLoaded", () => {
 
 // Copilot
 document.addEventListener("DOMContentLoaded", function () {
-	// Create the modal element
-	const modal = document.createElement("div");
-	modal.id = "alert-text-modal";
-	modal.innerHTML = `
-        <div id="alert-text-modal-content">
-            <span id="close-modal">&times;</span>
+	// Create the model element
+	const model = document.createElement("div");
+	model.id = "alert-text-model";
+	model.innerHTML = `
+        <div id="alert-text-model-content">
+            <span id="close-model">&times;</span>
             <pre id="alert-text-content" style="white-space: pre-wrap;"></pre>
         </div>
     `;
-	document.body.appendChild(modal);
+	document.body.appendChild(model);
 
 	// Handle button click to show alert text
 	document.addEventListener("click", function (event) {
 		if (event.target && event.target.id === "show-alert-text") {
 			const alertText = window.cachedAlertText || "No alert text available";
 			document.getElementById("alert-text-content").textContent = alertText;
-			document.getElementById("alert-text-modal").style.display = "block";
+			document.getElementById("alert-text-model").style.display = "block";
 		}
 	});
 
-	// Handle modal close
-	document.getElementById("close-modal").onclick = function () {
-		document.getElementById("alert-text-modal").style.display = "none";
+	// Handle model close
+	document.getElementById("close-model").onclick = function () {
+		document.getElementById("alert-text-model").style.display = "none";
 	};
 
-	// Close modal when clicking outside of the modal content
+	// Close model when clicking outside of the model content
 	window.onclick = function (event) {
-		if (event.target === modal) {
-			modal.style.display = "none";
+		if (event.target === model) {
+			model.style.display = "none";
 		}
 	};
 	//updateCountdown();

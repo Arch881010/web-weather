@@ -12,6 +12,8 @@ const default_config = {
 	},
 	radarTilemap: "n0q",
 	dev: false,
+	//api: "https://api.weather.gov/alerts/active",
+	api: "https://data.arch1010.dev/alerts",
 };
 
 const config = default_config;

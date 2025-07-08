@@ -123,7 +123,7 @@ input:focus {
     outline: none;
 }
 
-#alert-text-modal {
+#alert-text-model {
     display: none;
     position: fixed;
     z-index: 1000;
@@ -134,7 +134,7 @@ input:focus {
     overflow: hidden; /* Prevent scrolling on the entire map */
     background-color: rgba(0, 0, 0, 0.5);
 }
-#alert-text-modal-content {
+#alert-text-model-content {
     margin: 10% auto; /* Adjust top margin to position higher */
     padding: 20px;
     width: 60%; /* Default width */
@@ -147,26 +147,26 @@ input:focus {
 }
 
 /* Hide scrollbar for WebKit browsers (Chrome, Safari) */
-#alert-text-modal-content::-webkit-scrollbar {
+#alert-text-model-content::-webkit-scrollbar {
     display: none;
 }
 
 /* Media query for larger screens */
 @media (min-width: 1200px) {
-    #alert-text-modal-content {
+    #alert-text-model-content {
         width: 35%; /* Adjust width for larger screens */
     }
 }
 
-#close-modal {
+#close-model {
     color: #aaa;
     float: right;
     font-size: 28px;
     font-weight: bold;
 }
 
-#close-modal:hover,
-#close-modal:focus {
+#close-model:hover,
+#close-model:focus {
     color: black;
     text-decoration: none;
     cursor: pointer;
