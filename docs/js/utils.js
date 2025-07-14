@@ -67,7 +67,7 @@ const colorsArray = {
 	"Ashfall Advisory": "#696969",
 	"High Surf Warning": "#228B22",
 	"Excessive Heat Warning": "#C71585",
-	"Tornado Watch": "#ffff00",
+	"Tornado Watch": "#840404",
 	"Severe Thunderstorm Watch": "#8B8000",
 	"Flash Flood Watch": "#2E8B57",
 	"Gale Warning": "#DDA0DD",
