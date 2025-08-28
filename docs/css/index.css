@@ -133,6 +133,7 @@ input:focus {
     height: 100%;
     overflow: hidden; /* Prevent scrolling on the entire map */
     background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
 }
 #alert-text-model-content {
     margin: 10% auto; /* Adjust top margin to position higher */
