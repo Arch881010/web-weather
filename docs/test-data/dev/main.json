@@ -1,0 +1,437 @@
+{
+    "@context": [
+        "https://geojson.org/geojson-ld/geojson-context.jsonld",
+        {
+            "@version": "1.1",
+            "wx": "https://api.weather.gov/ontology#",
+            "@vocab": "https://api.weather.gov/ontology#"
+        }
+    ],
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.cb8a853a40bf1e6561f9d19db846eaf64d049848.001.1",
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -87.450000000000003,
+                            35.210000000000001
+                        ],
+                        [
+                            -86.829999999999998,
+                            35.409999900000003
+                        ],
+                        [
+                            -86.769999999999996,
+                            35.260000000000005
+                        ],
+                        [
+                            -86.829999999999998,
+                            35.260000000000005
+                        ],
+                        [
+                            -86.829999999999998,
+                            35.130000000000003
+                        ],
+                        [
+                            -87.390000000000001,
+                            35.039999999999999
+                        ],
+                        [
+                            -87.450000000000003,
+                            35.210000000000001
+                        ]
+                    ]
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.cb8a853a40bf1e6561f9d19db846eaf64d049848.001.1",
+                "@type": "wx:Alert",
+                "id": "urn:oid:2.49.0.1.840.0.cb8a853a40bf1e6561f9d19db846eaf64d049848.001.1",
+                "areaDesc": "Marshall; Lawrence; Giles",
+                "geocode": {
+                    "SAME": [
+                        "047117",
+                        "047099",
+                        "047055"
+                    ],
+                    "UGC": [
+                        "TNZ061",
+                        "TNZ094",
+                        "TNZ095"
+                    ]
+                },
+                "affectedZones": [
+                    "https://api.weather.gov/zones/forecast/TNZ061",
+                    "https://api.weather.gov/zones/forecast/TNZ094",
+                    "https://api.weather.gov/zones/forecast/TNZ095"
+                ],
+                "references": [],
+                "sent": "2023-01-12T13:05:00-06:00",
+                "effective": "2023-01-12T13:05:00-06:00",
+                "onset": "2023-01-12T13:05:00-06:00",
+                "expires": "2023-01-12T13:45:00-06:00",
+                "ends": null,
+                "status": "Actual",
+                "messageType": "Alert",
+                "category": "Met",
+                "severity": "Moderate",
+                "certainty": "Observed",
+                "urgency": "Expected",
+                "event": "Special Weather Statement",
+                "sender": "w-nws.webmaster@noaa.gov",
+                "senderName": "NWS Nashville TN",
+                "headline": "Special Weather Statement issued January 12 at 1:05PM CST by NWS Nashville TN",
+                "description": "At 104 PM CST, Doppler radar was tracking a strong thunderstorm near\nLawrenceburg, moving east at 35 mph.\n\nHAZARD...Winds in excess of 40 mph and pea size hail.\n\nSOURCE...Radar indicated.\n\nIMPACT...Gusty winds could knock down tree limbs and blow around\nunsecured objects. Minor damage to outdoor objects is\npossible.\n\nLocations impacted include...\nLawrenceburg, Pulaski, Loretto, Cornersville, Goodspring, Leoma and\nFrankewing.\n\nThis includes Interstate 65 between mile markers 9 and 28.",
+                "instruction": "If outdoors, consider seeking shelter inside a building.",
+                "response": "Execute",
+                "parameters": {
+                    "AWIPSidentifier": [
+                        "SPSOHX"
+                    ],
+                    "WMOidentifier": [
+                        "WWUS84 KOHX 121905"
+                    ],
+                    "NWSheadline": [
+                        "A strong thunderstorm will impact portions of southwestern Marshall, southeastern Lawrence and central Giles Counties through 145 PM CST"
+                    ],
+                    "eventMotionDescription": [
+                        "2023-01-12T19:04:00-00:00...storm...253DEG...30KT...35.15,-87.32"
+                    ],
+                    "maxWindGust": [
+                        "40 MPH"
+                    ],
+                    "maxHailSize": [
+                        "0.25"
+                    ],
+                    "BLOCKCHANNEL": [
+                        "EAS",
+                        "NWEM",
+                        "CMAS"
+                    ],
+                    "EAS-ORG": [
+                        "WXR"
+                    ]
+                }
+            }
+        },
+        {
+            "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.dd72a8239b3ee3f7ddc140d1f38f4eaedd455b1b.001.1",
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -86.480000000000004,
+                            32.609999999999999
+                        ],
+                        [
+                            -86.510000000000005,
+                            32.659999900000003
+                        ],
+                        [
+                            -86.52000000000001,
+                            32.700000000000003
+                        ],
+                        [
+                            -86.410000000000011,
+                            32.710000000000001
+                        ],
+                        [
+                            -86.410000000000011,
+                            32.609999999999999
+                        ],
+                        [
+                            -86.480000000000004,
+                            32.609999999999999
+                        ]
+                    ]
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.dd72a8239b3ee3f7ddc140d1f38f4eaedd455b1b.001.1",
+                "@type": "wx:Alert",
+                "id": "urn:oid:2.49.0.1.840.0.dd72a8239b3ee3f7ddc140d1f38f4eaedd455b1b.001.1",
+                "areaDesc": "Autauga, AL",
+                "geocode": {
+                    "SAME": [
+                        "001001"
+                    ],
+                    "UGC": [
+                        "ALC001"
+                    ]
+                },
+                "affectedZones": [
+                    "https://api.weather.gov/zones/county/ALC001"
+                ],
+                "references": [
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.aa66cd51ed2d51707e14c6d9f424155f4d9401a0.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.aa66cd51ed2d51707e14c6d9f424155f4d9401a0.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:20:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.8b4f488ca07ad0fc976e9c5bbe4d420663e65759.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.8b4f488ca07ad0fc976e9c5bbe4d420663e65759.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:18:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.5ca6fc7d35cb1cfdd7629f8ae835fc65d924e3b3.002.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.5ca6fc7d35cb1cfdd7629f8ae835fc65d924e3b3.002.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:34:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.3eaabfac50385769f83ad6f1a5f36cb4ebdf8174.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.3eaabfac50385769f83ad6f1a5f36cb4ebdf8174.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:30:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.a6f6f86488f577fbd77fea2ec24509d740df02c3.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.a6f6f86488f577fbd77fea2ec24509d740df02c3.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:51:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.88d7bb79fd6ef57826edd61d1d5f9e01242d1eb6.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.88d7bb79fd6ef57826edd61d1d5f9e01242d1eb6.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:53:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.e77c7ae24a7f080182c598a11b46de7e24ef1b93.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.e77c7ae24a7f080182c598a11b46de7e24ef1b93.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:48:00-06:00"
+                    }
+                ],
+                "sent": "2023-01-12T13:04:00-06:00",
+                "effective": "2023-01-12T13:04:00-06:00",
+                "onset": "2023-01-12T13:04:00-06:00",
+                "expires": "2023-01-12T13:15:00-06:00",
+                "ends": "2023-01-12T13:15:00-06:00",
+                "status": "Actual",
+                "messageType": "Update",
+                "category": "Met",
+                "severity": "Extreme",
+                "certainty": "Radar Indicated",
+                "urgency": "Immediate",
+                "event": "Tornado Warning",
+                "sender": "w-nws.webmaster@noaa.gov",
+                "senderName": "NWS Birmingham AL",
+                "headline": "Tornado Warning issued January 12 at 1:04PM CST until January 12 at 1:15PM CST by NWS Birmingham AL",
+                "description": "...A TORNADO WARNING REMAINS IN EFFECT UNTIL 115 PM CST FOR\nNORTHEASTERN AUTAUGA COUNTY...\n\nAt 103 PM CST, a confirmed large and destructive tornado was located\nnear Marbury, or 12 miles north of Millbrook, moving northeast at 55\nmph.\n\nTORNADO EMERGENCY for AUTAUGA COUNTY. This is a PARTICULARLY\nDANGEROUS SITUATION. TAKE COVER NOW!\n\nHAZARD...Deadly tornado.\n\nSOURCE...Radar confirmed tornado.\n\nIMPACT...You are in a life-threatening situation. Flying debris may\nbe deadly to those caught without shelter. Mobile homes\nwill be destroyed. Considerable damage to homes,\nbusinesses, and vehicles is likely and complete destruction\nis possible.\n\nLocations impacted include...\nMarbury.",
+                "instruction": "To repeat, a large, extremely dangerous, and potentially deadly\ntornado is on the ground. To protect your life, TAKE COVER NOW! Move\nto an interior room on the lowest floor of a sturdy building. Avoid\nwindows. If in a mobile home, a vehicle or outdoors, move to the\nclosest substantial shelter and protect yourself from flying debris.",
+                "response": "Shelter",
+                "parameters": {
+                    "AWIPSidentifier": [
+                        "SVSBMX"
+                    ],
+                    "WMOidentifier": [
+                        "WWUS54 KBMX 121904"
+                    ],
+                    "NWSheadline": [
+                        "TORNADO EMERGENCY FOR AUTAUGA COUNTY"
+                    ],
+                    "eventMotionDescription": [
+                        "2023-01-12T19:03:00-00:00...storm...240DEG...46KT...32.67,-86.42"
+                    ],
+                    "maxHailSize": [
+                        "Up to .75"
+                    ],
+                    "tornadoDetection": [
+                        "OBSERVED"
+                    ],
+                    "tornadoDamageThreat": [
+                        "CATASTROPHIC"
+                    ],
+                    "BLOCKCHANNEL": [
+                        "EAS",
+                        "NWEM"
+                    ],
+                    "EAS-ORG": [
+                        "WXR"
+                    ],
+                    "VTEC": [
+                        "/O.CON.KBMX.TO.W.0028.000000T0000Z-230112T1915Z/"
+                    ],
+                    "eventEndingTime": [
+                        "2023-01-12T19:15:00+00:00"
+                    ],
+                    "WEAHandling": [
+                        "Imminent Threat"
+                    ],
+                    "CMAMtext": [
+                        "NWS: TORNADO EMERGENCY til 1:15 PM CST. Tornado spotted in this area. Take shelter now!"
+                    ],
+                    "CMAMlongtext": [
+                        "National Weather Service: TORNADO EMERGENCY until 1:15 PM CST. Tornado spotted in this area. This is a life-threatening situation. Take shelter now in a basement or an interior room on the lowest floor of a sturdy building. If you are outdoors, in a mobile home, or in a vehicle move to the closest substantial shelter and protect yourself from flying debris."
+                    ]
+                }
+            }
+        },
+         {
+            "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.dd72a8239b3ee3f7ddc140d1f38f4eaedd455b1b.001.1",
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -87.480000000000004,
+                            32.609999999999999
+                        ],
+                        [
+                            -87.510000000000005,
+                            32.659999900000003
+                        ],
+                        [
+                            -86.52000000000001,
+                            32.700000000000003
+                        ],
+                        [
+                            -86.410000000000011,
+                            32.710000000000001
+                        ],
+                        [
+                            -86.410000000000011,
+                            32.609999999999999
+                        ],
+                        [
+                            -86.480000000000004,
+                            32.609999999999999
+                        ]
+                    ]
+                ]
+            },
+            "properties": {
+                "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.dd72a8239b3ee3f7ddc140d1f38f4eaedd455b1b.001.1",
+                "@type": "wx:Alert",
+                "id": "urn:oid:2.49.0.1.840.0.dd72a8239b3ee3f7ddc140d1f38f4eaedd455b1b.001.1",
+                "areaDesc": "Autauga, AL",
+                "geocode": {
+                    "SAME": [
+                        "001001"
+                    ],
+                    "UGC": [
+                        "ALC001"
+                    ]
+                },
+                "affectedZones": [
+                    "https://api.weather.gov/zones/county/ALC001"
+                ],
+                "references": [
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.aa66cd51ed2d51707e14c6d9f424155f4d9401a0.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.aa66cd51ed2d51707e14c6d9f424155f4d9401a0.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:20:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.8b4f488ca07ad0fc976e9c5bbe4d420663e65759.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.8b4f488ca07ad0fc976e9c5bbe4d420663e65759.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:18:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.5ca6fc7d35cb1cfdd7629f8ae835fc65d924e3b3.002.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.5ca6fc7d35cb1cfdd7629f8ae835fc65d924e3b3.002.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:34:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.3eaabfac50385769f83ad6f1a5f36cb4ebdf8174.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.3eaabfac50385769f83ad6f1a5f36cb4ebdf8174.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:30:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.a6f6f86488f577fbd77fea2ec24509d740df02c3.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.a6f6f86488f577fbd77fea2ec24509d740df02c3.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:51:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.88d7bb79fd6ef57826edd61d1d5f9e01242d1eb6.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.88d7bb79fd6ef57826edd61d1d5f9e01242d1eb6.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:53:00-06:00"
+                    },
+                    {
+                        "@id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.e77c7ae24a7f080182c598a11b46de7e24ef1b93.001.1",
+                        "identifier": "urn:oid:2.49.0.1.840.0.e77c7ae24a7f080182c598a11b46de7e24ef1b93.001.1",
+                        "sender": "w-nws.webmaster@noaa.gov",
+                        "sent": "2023-01-12T12:48:00-06:00"
+                    }
+                ],
+                "sent": "2023-01-12T13:04:00-06:00",
+                "effective": "2023-01-12T13:04:00-06:00",
+                "onset": "2023-01-12T13:04:00-06:00",
+                "expires": "2023-01-12T13:15:00-06:00",
+                "ends": "2023-01-12T13:15:00-06:00",
+                "status": "Actual",
+                "messageType": "Update",
+                "category": "Met",
+                "severity": "Extreme",
+                "certainty": "Radar Indicated",
+                "urgency": "Immediate",
+                "event": "Tornado Warning",
+                "sender": "w-nws.webmaster@noaa.gov",
+                "senderName": "NWS Birmingham AL",
+                "headline": "Tornado Warning issued January 12 at 1:04PM CST until January 12 at 1:15PM CST by NWS Birmingham AL",
+                "description": "...A TORNADO WARNING REMAINS IN EFFECT UNTIL 115 PM CST FOR\nNORTHEASTERN AUTAUGA COUNTY...\n\nAt 103 PM CST, a confirmed large and destructive tornado was located\nnear Marbury, or 12 miles north of Millbrook, moving northeast at 55\nmph.\n\nTORNADO EMERGENCY for AUTAUGA COUNTY. This is a PARTICULARLY\nDANGEROUS SITUATION. TAKE COVER NOW!\n\nHAZARD...Deadly tornado.\n\nSOURCE...Radar confirmed tornado.\n\nIMPACT...You are in a life-threatening situation. Flying debris may\nbe deadly to those caught without shelter. Mobile homes\nwill be destroyed. Considerable damage to homes,\nbusinesses, and vehicles is likely and complete destruction\nis possible.\n\nLocations impacted include...\nMarbury.",
+                "instruction": "To repeat, a large, extremely dangerous, and potentially deadly\ntornado is on the ground. To protect your life, TAKE COVER NOW! Move\nto an interior room on the lowest floor of a sturdy building. Avoid\nwindows. If in a mobile home, a vehicle or outdoors, move to the\nclosest substantial shelter and protect yourself from flying debris.",
+                "response": "Shelter",
+                "parameters": {
+                    "AWIPSidentifier": [
+                        "SVSBMX"
+                    ],
+                    "WMOidentifier": [
+                        "WWUS54 KBMX 121904"
+                    ],
+                    "NWSheadline": [
+                        "TORNADO EMERGENCY FOR AUTAUGA COUNTY"
+                    ],
+                    "eventMotionDescription": [
+                        "2023-01-12T19:03:00-00:00...storm...240DEG...46KT...32.67,-86.42"
+                    ],
+                    "maxHailSize": [
+                        "Up to .75"
+                    ],
+                    "tornadoDetection": [
+                        "OBSERVED"
+                    ],
+                    "BLOCKCHANNEL": [
+                        "EAS",
+                        "NWEM"
+                    ],
+                    "EAS-ORG": [
+                        "WXR"
+                    ],
+                    "VTEC": [
+                        "/O.CON.KBMX.TO.W.0028.000000T0000Z-230112T1915Z/"
+                    ],
+                    "eventEndingTime": [
+                        "2023-01-12T19:15:00+00:00"
+                    ],
+                    "WEAHandling": [
+                        "Imminent Threat"
+                    ],
+                    "CMAMtext": [
+                        "NWS: TORNADO EMERGENCY til 1:15 PM CST. Tornado spotted in this area. Take shelter now!"
+                    ],
+                    "CMAMlongtext": [
+                        "National Weather Service: TORNADO EMERGENCY until 1:15 PM CST. Tornado spotted in this area. This is a life-threatening situation. Take shelter now in a basement or an interior room on the lowest floor of a sturdy building. If you are outdoors, in a mobile home, or in a vehicle move to the closest substantial shelter and protect yourself from flying debris."
+                    ]
+                }
+            }
+        }
+    ]
+}

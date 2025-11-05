@@ -11,10 +11,25 @@ const default_config = {
 		watches: true,
 	},
 	radarTilemap: "n0q",
-	dev: false,
+	dev: {
+		"status": false,
+		"warnings_file": "2023/real-fake.json"
+	},
 	//api: "https://api.weather.gov/alerts/active",
 	api: "https://data.arch1010.dev/alerts",
+	devPresets: {
+		"0": {
+		"status": true,
+		"warnings_file": "2023/real-fake.json"
+		},
+		"1": {
+		"status": true,
+		"warnings_file": "dev/main.json"
+		}
+	}
 };
+
+
 
 const config = default_config;
 
