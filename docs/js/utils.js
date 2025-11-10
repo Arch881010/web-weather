@@ -468,7 +468,7 @@ function drawPolygons(data) {
 			switch (tag) {
 				case "destructive":
 					newFeature.properties.color = "#ff0000";
-					newFeature.properties.borderSize = size - change;
+					//newfeature.properties.size.border = size - change;
 					pushFeature = true;
 					break;
 				case "considerable":
@@ -485,10 +485,16 @@ function drawPolygons(data) {
 
 		// alertExtras.features.push(feature);
 		// if (pushFeature) alertBackgrounds.features.push(newFeature);
+		feature.properties.size = {};
 		if (pushFeature) {
+			feature.properties.size.border = size + change;
+			feature.properties.size.polygon = size;
+			feature.properties.size.extra = size - change;
+			newFeature.properties.size = feature.properties.size;
 			alertExtras.features.push(newFeature);
 		} else {
-			feature.properties.borderSize = size - change;
+			feature.properties.size.border = size;
+			feature.properties.size.polygon = size - change;
 		}
 		alertBackgrounds.features.push(feature);
 	}
@@ -499,7 +505,7 @@ function drawPolygons(data) {
 		style: function (feature) {
 			return {
 				color: "black", // Outer border color
-				weight: size + change, // Outer border width
+				weight: feature.properties.size.border + change || size + change, // Outer border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: 0, // Make the polygon fill transparent
 			};
@@ -512,7 +518,7 @@ function drawPolygons(data) {
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
-				weight: feature.properties.borderSize || size, // Border width
+				weight: feature.properties.size.polygon || size, // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
 			};
@@ -525,6 +531,7 @@ function drawPolygons(data) {
 			layer.on("popupopen", function () {
 				console.log("Popup opened for feature:", feature);
 				window.cachedAlertText = getAlertText(feature);
+				console.log()
 			});
 		},
 		id: "weather-alerts",
@@ -536,7 +543,7 @@ function drawPolygons(data) {
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
-				weight: feature.properties.borderSize || (size - (change + 1.5)), // Border width
+				weight: feature.properties.size.extra || (size - (change + 2)), // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				//fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
 				fillOpacity: 0

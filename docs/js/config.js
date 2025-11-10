@@ -25,7 +25,8 @@ const default_config = {
 		"1": {
 		"status": true,
 		"warnings_file": "dev/main.json"
-		}
+		},
+		"savedSettings": true,
 	}
 };
 
@@ -34,8 +35,9 @@ const default_config = {
 const config = default_config;
 
 const loadSettings = () => {
-	const savedSettings = JSON.parse(localStorage.getItem("weatherAppSettings"));
-	if (savedSettings) {
+	let savedSettings = JSON.parse(localStorage.getItem("weatherAppSettings"));
+	if (!savedSettings || savedSettings == "") savedSettings = config;
+	// if (savedSettings) {
 		document.getElementById("save-settings").checked =
 			savedSettings.saveSettings || false;
 		document.getElementById("opacity-radar").value =
@@ -58,31 +60,30 @@ const loadSettings = () => {
 
 		config.show.watches = true;
 		return savedSettings;
-	} else {
-		// Set default values
-		document.getElementById("opacity-radar").value = 100;
-		document.getElementById("opacity-polygon-fill").value = 15;
-		document.getElementById("opacity-polygon").value = 100;
-		document.getElementById("opacity-county-borders").value = 100;
-		document.getElementById("radar-tilemap").value = "n0q";
+	// } else {
+	// 	// Set default values
+	// 	document.getElementById("opacity-radar").value = savedSettings.saveSettings || false;;
+	// 	document.getElementById("opacity-polygon-fill").value = 15;
+	// 	document.getElementById("opacity-polygon").value = 100;
+	// 	document.getElementById("opacity-county-borders").value = 100;
+	// 	document.getElementById("radar-tilemap").value = "n0q";
 
-		// Update config object
-		config.opacity.radar = 1;
-		config.opacity.polygon_fill = 0.15;
-		config.opacity.polygon = 1;
-		config.opacity.countyBorders = 1;
+	// 	// Update config object
+	// 	config.opacity.radar = 1;
+	// 	config.opacity.polygon_fill = 0.15;
+	// 	config.opacity.polygon = 1;
+	// 	config.opacity.countyBorders = 1;
 
-		return {
-			saveSettings: false,
-			opacity: {
-				radar: 1,
-				polygon_fill: 0.15,
-				polygon: 1,
-				countyBorders: 1,
-			},
-			radar_tilemap: "n0q",
-		};
-	}
+	// 	return {
+	// 		saveSettings: false,
+	// 		opacity: {
+	// 			radar: 1,
+	// 			polygon_fill: 0.15,
+	// 			polygon: 1,
+	// 			countyBorders: 1,
+	// 		},
+	// 		radar_tilemap: "n0q",
+	// 	};
 };
 
 let userSettings = loadSettings();
@@ -98,6 +99,8 @@ const saveSettings = () => {
 		document.getElementById("opacity-county-borders").value / 100;
 	const radarTilemap = document.getElementById("radar-tilemap").value;
 
+
+
 	const settings = {
 		saveSettings: saveSettingsCheckbox,
 		opacity: {
@@ -109,21 +112,25 @@ const saveSettings = () => {
 		radar_tilemap: radarTilemap,
 	};
 
-	userSettings = settings;
-
-	if (saveSettingsCheckbox) {
-		localStorage.setItem("weatherAppSettings", JSON.stringify(settings));
-	} else {
-		try {
-			localStorage.removeItem("weatherAppSettings");
-		} catch (e) {}
-	}
-
 	// Update config object
+	config.saveSettings = saveSettingsCheckbox;
 	config.opacity.radar = opacityRadar;
 	config.opacity.polygon_fill = opacityPolygonFill;
 	config.opacity.polygon = opacityPolygon;
 	config.opacity.countyBorders = opacityCountyBorders;
+	config.radarTilemap = radarTilemap;
+
+	userSettings = config;
+
+	if (saveSettingsCheckbox) {
+		localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+	} else {
+		try {
+			localStorage.removeItem("weatherAppSettings");
+			
+		} catch (e) {}
+	}
+
 
 	redrawPolygons();
 	updateRadarLayer();
