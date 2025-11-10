@@ -38,8 +38,8 @@ const loadSettings = () => {
 	let savedSettings = JSON.parse(localStorage.getItem("weatherAppSettings"));
 	if (!savedSettings || savedSettings == "") savedSettings = config;
 	// if (savedSettings) {
-		document.getElementById("save-settings").checked =
-			savedSettings.saveSettings || false;
+		// document.getElementById("save-settings").checked =
+		// 	savedSettings.saveSettings || false;
 		document.getElementById("opacity-radar").value =
 			savedSettings.opacity.radar * 100;
 		document.getElementById("opacity-polygon-fill").value =
@@ -49,14 +49,14 @@ const loadSettings = () => {
 		document.getElementById("opacity-county-borders").value =
 			savedSettings.opacity.countyBorders * 100;
 		document.getElementById("radar-tilemap").value =
-			savedSettings.radar_tilemap;
+			savedSettings.radarTilemap;
 
 		// Update config object
 		config.opacity.radar = savedSettings.opacity.radar;
 		config.opacity.polygon_fill = savedSettings.opacity.polygon_fill;
 		config.opacity.polygon = savedSettings.opacity.polygon;
 		config.opacity.countyBorders = savedSettings.opacity.countyBorders;
-		config.radar = savedSettings.radar_tilemap;
+		config.radar = savedSettings.radarTilemap;
 
 		config.show.watches = true;
 		return savedSettings;
@@ -90,7 +90,7 @@ let userSettings = loadSettings();
 
 // Function to save settings to local storage and update config
 const saveSettings = () => {
-	const saveSettingsCheckbox = document.getElementById("save-settings").checked;
+	//const saveSettingsCheckbox = document.getElementById("save-settings").checked;
 	const opacityRadar = document.getElementById("opacity-radar").value / 100;
 	const opacityPolygonFill =
 		document.getElementById("opacity-polygon-fill").value / 100;
@@ -99,21 +99,8 @@ const saveSettings = () => {
 		document.getElementById("opacity-county-borders").value / 100;
 	const radarTilemap = document.getElementById("radar-tilemap").value;
 
-
-
-	const settings = {
-		saveSettings: saveSettingsCheckbox,
-		opacity: {
-			radar: opacityRadar,
-			polygon_fill: opacityPolygonFill,
-			polygon: opacityPolygon,
-			countyBorders: opacityCountyBorders,
-		},
-		radar_tilemap: radarTilemap,
-	};
-
 	// Update config object
-	config.saveSettings = saveSettingsCheckbox;
+	config.saveSettings = true;
 	config.opacity.radar = opacityRadar;
 	config.opacity.polygon_fill = opacityPolygonFill;
 	config.opacity.polygon = opacityPolygon;
@@ -122,15 +109,7 @@ const saveSettings = () => {
 
 	userSettings = config;
 
-	if (saveSettingsCheckbox) {
-		localStorage.setItem("weatherAppSettings", JSON.stringify(config));
-	} else {
-		try {
-			localStorage.removeItem("weatherAppSettings");
-			
-		} catch (e) {}
-	}
-
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
 
 	redrawPolygons();
 	updateRadarLayer();
