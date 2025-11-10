@@ -389,14 +389,13 @@ function drawPolygons(data) {
 
 	if (config.opacity.polygon == 0) return;
 
-	console.warn(data);
 	let alertExtras = structuredClone(data);
 	alertExtras.features = [];
 
 	let alertBackgrounds = structuredClone(data);
 	alertBackgrounds.features = [];
 
-	for (feature of data.features) {
+	for (let feature of data.features) {
 		if (!feature.properties.parameters.tornado)
 			feature.properties.parameters.tornado = { possible: "" };
 
@@ -421,17 +420,18 @@ function drawPolygons(data) {
 		}
 
 		if (typeof tag != "string") {
-			console.warn(
-				"Previous data is not proper. Recieved type " +
-					typeof tag +
-					" when expected string. JSON.stringify() " +
-					JSON.stringify(tag)
-			);
+			if (config.dev.status === true) {
+				console.warn(
+					"Previous data is not proper. Received type " +
+						typeof tag +
+						" when expected string. JSON.stringify() " +
+						JSON.stringify(tag)
+				);
+			}
 			continue;
 		}
 
 		tag = tag.toLowerCase();
-		console.warn(tag);
 		let torCert = "";
 		let torPsbl = feature.properties.parameters.tornado.possible;
 
@@ -461,6 +461,7 @@ function drawPolygons(data) {
 				case "observed":
 					newFeature.properties.color = "#000000";
 					pushFeature = true;
+					break;
 				default:
 					break;
 			}
@@ -478,6 +479,7 @@ function drawPolygons(data) {
 				case "possible":
 					newFeature.properties.color = "#000000";
 					pushFeature = true;
+					break;
 				default:
 					break;
 			}
@@ -531,7 +533,6 @@ function drawPolygons(data) {
 			layer.on("popupopen", function () {
 				console.log("Popup opened for feature:", feature);
 				window.cachedAlertText = getAlertText(feature);
-				console.log()
 			});
 		},
 		id: "weather-alerts",
