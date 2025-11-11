@@ -32,7 +32,7 @@ function updateWeatherAlerts() {
 	// If dev mode is enabled, use local test data instead of remote API
 	if (config.dev.status) {
 		console.info(
-			"Dev mode enabled — loading local test data: ./test-data/ww/2023/real-fake.json"
+			"Dev mode enabled — loading local test data: ./test-data/" + config.dev.warnings_file
 		);
 		fetch(("./test-data/" + config.dev.warnings_file))
 			.then((response) => response.json())
