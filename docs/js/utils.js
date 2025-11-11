@@ -24,7 +24,7 @@ function getColor(text) {
 
 const colorsArray = {
 	"Tsunami Warning": "#FD6347",
-	"Tornado Warning": "#FF0000",
+	"Tornado Warning": "#ff0000",
 	"Extreme Wind Warning": "#FF8C00",
 	"Severe Thunderstorm Warning": "#FFA500",
 	"Flash Flood Warning": "#8B0000",
@@ -162,7 +162,7 @@ const log_features = ["Tornado Watch", "Severe Thunderstorm Watch"];
 // Our current features so we can cache them locally so we don't have to fetch them every time.
 let current_features, counties, countyBordersLayer;
 // Some dev shenangians
-if (config.dev) {
+if (config.dev.status) {
 	console.info("Development mode is enabled.");
 	console.info(
 		"Logging these features (warnings):",
@@ -248,7 +248,7 @@ function formatExpirationTime(expirationTime) {
 function getPopupText(feature) {
 	let weatherEvent = feature.properties.event;
 
-	if (log_features.matchesAny(weatherEvent) && config.dev) {
+	if (log_features.matchesAny(weatherEvent) && config.dev.status) {
 		console.info(feature);
 	}
 
@@ -279,7 +279,6 @@ function clearLayers(layerIds) {
 
 // Function to fetch and update radar layer
 function updateRadarLayer() {
-
 	// If the radar opacity is set to 0, skip loading new radar data and clear the layer if it exists
 	if (userSettings.opacity.radar == 0) {
 		console.error(
@@ -312,7 +311,6 @@ function updateRadarLayer() {
 		console.warn("Radar layer type changed, removing old layer.");
 		clearLayers(["radar-layer"]);
 	}
-	
 
 	L.tileLayer
 		.wms(
@@ -328,10 +326,8 @@ function updateRadarLayer() {
 			}
 		)
 		.addTo(map);
-		console.info("Radar layer updated.");
+	console.info("Radar layer updated.");
 }
-
-
 
 async function addCountdown() {
 	// Add countdown timer to the map
@@ -379,17 +375,139 @@ function updateCountdown(force) {
 }
 
 function drawPolygons(data) {
+	const size = 4;
+	const change = 2;
+
 	// Add the black border around each polygon
 	if (window.countdown)
-	clearLayers(["weather-alerts", "weather-alerts-border"]);
+		clearLayers([
+			"weather-alerts",
+			"weather-alerts-border",
+			"weather-alerts-background",
+			"alert-extras",
+		]);
 
 	if (config.opacity.polygon == 0) return;
+
+	let alertExtras = structuredClone(data);
+	alertExtras.features = [];
+
+	let alertBackgrounds = structuredClone(data);
+	alertBackgrounds.features = [];
+
+	for (let feature of data.features) {
+		if (!feature.properties.parameters.tornado)
+			feature.properties.parameters.tornado = { possible: "" };
+
+		let eventName = feature.properties.event.toLowerCase();
+		let tag =
+			feature.properties.parameters.tornadoDamageThreat ||
+			feature.properties.parameters.thunderstormDamageThreat ||
+			"";
+		if (typeof tag != "string") {
+			try {
+				tag = tag[0];
+			} catch (e) {}
+		}
+
+		if (config.dev.status === true) {
+			console.log(
+				"Got data for tag: " +
+					tag +
+					" or as JSON.stringify(): " +
+					JSON.stringify(tag)
+			);
+		}
+
+		if (typeof tag != "string") {
+			if (config.dev.status === true) {
+				console.warn(
+					"Previous data is not proper. Received type " +
+						typeof tag +
+						" when expected string. JSON.stringify() " +
+						JSON.stringify(tag)
+				);
+			}
+			continue;
+		}
+
+		tag = tag.toLowerCase();
+		let torCert = "";
+		let torPsbl = feature.properties.parameters.tornado.possible;
+
+		try {
+			torCert = feature.properties.parameters.tornadoDetection[0];
+		} catch (e) {}
+
+		const allTags = ["considerable", "catastrophic", "destructive"];
+		if (!allTags.includes(tag) && eventName.includes("tornado")) {
+			tag = torCert.toLowerCase();
+		} else if (!allTags.includes(tag) && eventName.includes("severe thun")) {
+			tag = torPsbl.toLowerCase();
+		}
+
+		let newFeature = structuredClone(feature);
+		let pushFeature = false;
+		if (eventName.includes("tornado")) {
+			switch (tag) {
+				case "considerable":
+					feature.properties.color = "#ff00ff";
+					break;
+				case "catastrophic":
+					feature.properties.color = "#ff00ff";
+					newFeature.properties.color = "#000000";
+					pushFeature = true;
+					break;
+				case "observed":
+					newFeature.properties.color = "#000000";
+					pushFeature = true;
+					break;
+				default:
+					break;
+			}
+		} else if (eventName.includes("severe th")) {
+			switch (tag) {
+				case "destructive":
+					newFeature.properties.color = "#ff0000";
+					//newfeature.properties.size.border = size - change;
+					pushFeature = true;
+					break;
+				case "considerable":
+					newFeature.properties.color = "#ff0000";
+					pushFeature = true;
+					break;
+				case "possible":
+					newFeature.properties.color = "#000000";
+					pushFeature = true;
+					break;
+				default:
+					break;
+			}
+		}
+
+		// alertExtras.features.push(feature);
+		// if (pushFeature) alertBackgrounds.features.push(newFeature);
+		feature.properties.size = {};
+		if (pushFeature) {
+			feature.properties.size.border = size + change;
+			feature.properties.size.polygon = size;
+			feature.properties.size.extra = size - change;
+			newFeature.properties.size = feature.properties.size;
+			alertExtras.features.push(newFeature);
+		} else {
+			feature.properties.size.border = size;
+			feature.properties.size.polygon = size - change;
+		}
+		alertBackgrounds.features.push(feature);
+	}
+
+	data = alertBackgrounds;
 
 	L.geoJSON(data, {
 		style: function (feature) {
 			return {
 				color: "black", // Outer border color
-				weight: 5, // Outer border width
+				weight: feature.properties.size.border + change || size + change, // Outer border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: 0, // Make the polygon fill transparent
 			};
@@ -402,7 +520,7 @@ function drawPolygons(data) {
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
-				weight: 3, // Border width
+				weight: feature.properties.size.polygon || size, // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
 			};
@@ -421,6 +539,22 @@ function drawPolygons(data) {
 	})
 		.addTo(map)
 		.bringToFront();
+
+	L.geoJSON(alertExtras, {
+		style: function (feature) {
+			return {
+				color: feature.properties.color || getColor(feature.properties.event), // Border color
+				weight: feature.properties.size.extra || (size - (change + 2)), // Border width
+				opacity: config.opacity.polygon, // Outer border opacity
+				//fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
+				fillOpacity: 0
+			};
+		},
+		id: "alert-extras",
+		interactive: false
+	})
+		.addTo(map)
+		.bringToFront();
 }
 
 function redrawPolygons() {
@@ -429,6 +563,7 @@ function redrawPolygons() {
 }
 
 function getSevereStorm(feature) {
+	// feature.properties.parameters.tornadoDamageThreat
 	try {
 		let weatherEvent = feature.properties.event;
 		let weatherParams = feature.properties.parameters || {};
@@ -440,6 +575,7 @@ function getSevereStorm(feature) {
 		let hailSource = weatherParams.hailThreat || ["Radar Indicated"];
 		let windSource = weatherParams.windThreat || ["Radar Indicated"];
 		let torSeverity = weatherParams.tornadoDamageThreat || [""];
+		let stormSeverity = weatherParams.thunderstormDamageThreat || [""];
 		if (typeof hailSource == Array) hailSource = hailSource[0];
 		if (typeof windSource == Array) windSource = windSource[0];
 
@@ -461,6 +597,7 @@ function getSevereStorm(feature) {
 					possible: tornadoPossible[0].toTitleCase(),
 					severity: torSeverity[0].toTitleCase(),
 				},
+				storm: { severity: stormSeverity[0].toTitleCase() },
 				damageThreat: "",
 				origionalFeature: feature,
 			},
@@ -484,8 +621,8 @@ function getSevereStorm(feature) {
 			params.parameters.hail.maxHail += '"';
 		}
 
-		if (params.parameters.hail.maxHail.replaceAll("\"", "") == "0.75")
-		console.warn(params);
+		if (params.parameters.hail.maxHail.replaceAll('"', "") == "0.75")
+			console.warn(params);
 
 		return params;
 	} catch (e) {
@@ -499,6 +636,7 @@ function getSevereStorm(feature) {
 				hail: { maxHail: "N/A", radarIndicated: "Radar Indicated" },
 				wind: { windSpeed: "N/A", radarIndicated: "Radar Indicated" },
 				tornado: { possible: "N/A", severity: "" },
+				storm: { severity: "" },
 				origionalFeature: feature,
 			},
 		};
@@ -530,6 +668,7 @@ function asText(json) {
 	let hailSource = json.parameters.hail.radarIndicated || "Radar Indicated";
 	const tornado = json.parameters.tornado.possible || "N/A";
 	const torSeverity = json.parameters.tornado.severity || "";
+	const stormSeverity = json.parameters.storm.severity || "";
 
 	if (weatherEvent.includes("Special Weather Statement")) {
 		windSource = hailSource = "Radar Indicated";
@@ -544,9 +683,12 @@ function asText(json) {
 		}
 		if (tornado.toUpperCase() != "N/A") {
 			popupContent += `Tornado: ${tornado}<br>`;
-			if (torSeverity != "") {
-				popupContent += `Threat: ${torSeverity}<br>`;
-			}
+		}
+		if (torSeverity != "") {
+			popupContent += `Threat: ${torSeverity}<br>`;
+		}
+		if (stormSeverity != "" && torSeverity == "") {
+			popupContent += `Threat: ${stormSeverity}<br>`;
 		}
 	} else {
 		popupContent += `This storm has weakened below severe limits.\nThis warning will expire soon.\n<br>`;
@@ -556,5 +698,22 @@ function asText(json) {
 }
 
 function forceUpdate() {
+	window.timeUntilNextUpdate = 1;
+}
+
+function dev(preset) {
+	if (!preset) preset = "";
+	if (typeof preset !== "number") preset = preset.toLowerCase();
+	switch (preset) {
+		case "disable":
+		case "reset":
+		case "":
+			config.dev = config.devPresets["0"];
+			break;
+
+		default:
+			config.dev = config.devPresets[`${preset}`];
+			break;
+	}
 	window.timeUntilNextUpdate = 1;
 }

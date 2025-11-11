@@ -74,7 +74,7 @@ async function getKMZsfromKMZ(kmzUrl) {
 
 async function getWatches() {
 	let kmzUrl = "https://www.spc.noaa.gov/products/watch/ActiveWW.kmz";
-	if (config.dev) kmzUrl = "./test-data/ww/2025/WW0008_SAW.kmz";
+	if (config.dev.status) kmzUrl = "./test-data/2025/WW0008_SAW.kmz";
 
 	try {
 		let kmlFilesToFetch = [];

@@ -19,101 +19,135 @@
     </div>
     <div id="map"></div>
     <div id="settings-panel" class="settings-content" style="display: none">
-      <h2>Settings</h2>
-      <div>
-        <h3>General</h3>
-        <label>
-          Save Settings between sessions?
-          <input type="checkbox" id="save-settings" />
-        </label>
-      </div>
-      <div>
-        <h3>Opacity</h3>
-        <label>
-          Radar:
-          <input
-            type="number"
-            id="opacity-radar"
-            min="0"
-            max="100"
-            step="1"
-            value="50"
-          />%
-          <span
-            class="info-icon"
-            title="0-100, where 0% is invisible and 100% is most visible."
-            ><i class="fas fa-info-circle"></i
-          ></span>
-        </label>
-        <br />
-        <label>
-          Polygon Fill:<br />
-          <input
-            type="number"
-            id="opacity-polygon-fill"
-            min="0"
-            max="100"
-            step="1"
-            value="0"
-          />%
-          <span
-            class="info-icon"
-            title="0-100, where 0% is invisible and 100% is most visible."
-            ><i class="fas fa-info-circle"></i
-          ></span>
-        </label>
-        <br />
-        <label>
-          Polygon:
-          <input
-            type="number"
-            id="opacity-polygon"
-            min="0"
-            max="100"
-            step="1"
-            value="100"
-          />%
-          <span
-            class="info-icon"
-            title="0-100, where 0% is invisible and 100% is most visible."
-            ><i class="fas fa-info-circle"></i
-          ></span>
-        </label>
-        <br />
-        <label>
-          County Borders:
-          <input
-            type="number"
-            id="opacity-county-borders"
-            min="0"
-            max="100"
-            step="1"
-            value="100"
-          />%
-          <span
-            class="info-icon"
-            title="0-100, where 0% is invisible and 100% is most visible."
-            ><i class="fas fa-info-circle"></i
-          ></span>
-        </label>
-        <br />
-        <label>
-          Product:
-          <select id="radar-tilemap" value="n0q">
-            <option value="n0r">n0r</option>
-            <option value="n0q">n0q</option>
-          </select>
-        </label>
-        <br />
-      </div>
-      <button id="close-settings">Close</button>
-      <div
-        id="version-info"
-        style="margin-top: 20px; font-size: 0.9em; color: #666"
-      >
-        Version: <span id="version-number">Loading...</span><br />
-        Last Updated: <span id="time-updated">Loading...</span><br />
-        Recent Commit: <span id="recent-commit">Loading...</span>
+      <div class="settings-container">
+        <div class="settings-header">
+          <h2>Settings</h2>
+          <button id="close-settings" class="close-btn" title="Close Settings">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+
+        <div class="settings-body">
+          <div class="settings-section">
+            <h3><i class="fas fa-sliders-h"></i> Opacity Controls</h3>
+            <div class="setting-item">
+              <label for="opacity-radar">
+                Radar
+                <span
+                  class="info-icon"
+                  title="0-100, where 0% is invisible and 100% is most visible."
+                >
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </label>
+              <div class="input-group">
+                <input
+                  type="number"
+                  id="opacity-radar"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="50"
+                />
+                <span class="unit">%</span>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <label for="opacity-polygon-fill">
+                Polygon Fill
+                <span
+                  class="info-icon"
+                  title="0-100, where 0% is invisible and 100% is most visible."
+                >
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </label>
+              <div class="input-group">
+                <input
+                  type="number"
+                  id="opacity-polygon-fill"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="0"
+                />
+                <span class="unit">%</span>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <label for="opacity-polygon">
+                Polygon Border
+                <span
+                  class="info-icon"
+                  title="0-100, where 0% is invisible and 100% is most visible."
+                >
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </label>
+              <div class="input-group">
+                <input
+                  type="number"
+                  id="opacity-polygon"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="100"
+                />
+                <span class="unit">%</span>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <label for="opacity-county-borders">
+                County Borders
+                <span
+                  class="info-icon"
+                  title="0-100, where 0% is invisible and 100% is most visible."
+                >
+                  <i class="fas fa-info-circle"></i>
+                </span>
+              </label>
+              <div class="input-group">
+                <input
+                  type="number"
+                  id="opacity-county-borders"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="100"
+                />
+                <span class="unit">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3><i class="fas fa-satellite-dish"></i> Radar Product</h3>
+            <div class="setting-item">
+              <label for="radar-tilemap">Product Type</label>
+              <select id="radar-tilemap">
+                <option value="n0r">N0R (Base Reflectivity)</option>
+                <option value="n0q" selected>N0Q (Base Reflectivity Digital)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-footer">
+          <div id="version-info">
+            <div class="version-item">
+              <strong>Version:</strong> <span id="version-number">Loading...</span>
+            </div>
+            <div class="version-item">
+              <strong>Last Updated:</strong> <span id="time-updated">Loading...</span>
+            </div>
+            <div class="version-item">
+              <strong>Recent Commit:</strong> <span id="recent-commit">Loading...</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="reflectivity-bar">
