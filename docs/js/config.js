@@ -19,10 +19,13 @@ const default_config = {
 	api: "https://data.arch1010.dev/alerts",
 	devPresets: {
 		"0": {
+			"status": false,
+		},
+		"1": {
 		"status": true,
 		"warnings_file": "2023/real-fake.json"
 		},
-		"1": {
+		"2": {
 		"status": true,
 		"warnings_file": "dev/main.json"
 		},
