@@ -1,6 +1,4 @@
 /** @format */
-// Copilot
-
 document.addEventListener("DOMContentLoaded", () => {
 	loadSettings();
 	// Create a taskbar control
@@ -19,8 +17,6 @@ document.addEventListener("DOMContentLoaded", () => {
 	//EOC
 
 	const settingsPanel = document.getElementById("settings-panel");
-
-	// Load settings from local storage
 
 	// Load settings on page load
 	loadSettings();
