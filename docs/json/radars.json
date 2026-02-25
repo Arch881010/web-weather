@@ -34,18 +34,6 @@
       "name": "KLBB"
     },
     {
-      "id": "https://api.weather.gov/radar/stations/HWPA2",
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -151.46,
-          59.65
-        ]
-      },
-      "name": "HWPA2"
-    },
-    {
       "id": "https://api.weather.gov/radar/stations/KRGX",
       "type": "Feature",
       "geometry": {
@@ -1018,18 +1006,6 @@
       "name": "RODN"
     },
     {
-      "id": "https://api.weather.gov/radar/stations/ROCO2",
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -97.45,
-          35.23
-        ]
-      },
-      "name": "ROCO2"
-    },
-    {
       "id": "https://api.weather.gov/radar/stations/KLZK",
       "type": "Feature",
       "geometry": {
@@ -1124,18 +1100,6 @@
         ]
       },
       "name": "KUDX"
-    },
-    {
-      "id": "https://api.weather.gov/radar/stations/AWPA2",
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -149.78,
-          61.15
-        ]
-      },
-      "name": "AWPA2"
     },
     {
       "id": "https://api.weather.gov/radar/stations/KTYX",
@@ -2276,18 +2240,6 @@
         ]
       },
       "name": "TDTW"
-    },
-    {
-      "id": "https://api.weather.gov/radar/stations/TLKA2",
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -150.42,
-          62.31
-        ]
-      },
-      "name": "TLKA2"
     },
     {
       "id": "https://api.weather.gov/radar/stations/TCLT",

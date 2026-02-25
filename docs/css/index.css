@@ -9,11 +9,103 @@ body {
     touch-action: pan-x pan-y;
 }
 
+body.settings-open {
+    overflow: hidden;
+}
+
+body.settings-open #bottom-status-bar,
+body.settings-open .leaflet-control-attribution {
+    display: none;
+}
+
+.radar {
+    /* background-color: black; */
+    border-radius: 20%;
+    padding: 4px;
+    box-sizing: border-box;  
+    backdrop-filter: blur(10px); 
+}
+
+.radar.selected-radar {
+    background-color: rgba(0, 255, 255, 0.28);
+    outline: 1px solid rgba(0, 255, 255, 0.9);
+}
+
 #map {
     position: absolute;
     top: 0;
     bottom: 0;
     width: 100%;
+}
+
+#bottom-status-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 1002;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background-color: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.bottom-status-left {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.bottom-status-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.icon-control {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+}
+
+.icon-control i {
+    font-size: 15px;
+}
+
+.bottom-status-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 13px;
+    text-align: right;
+    max-width: 100%;
+}
+
+#radar-runtime-status,
+#radar-runtime-timer {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+#radar-runtime-status {
+    max-width: min(62vw, 760px);
 }
 
 #loading-screen {
@@ -65,7 +157,7 @@ body {
     width: auto;
     max-width: 90vw;
     backdrop-filter: blur(10px);
-    z-index: 1001;
+    z-index: 1008;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
@@ -75,6 +167,7 @@ body {
 .settings-container {
     display: flex;
     flex-direction: column;
+    max-height: min(86vh, 900px);
 }
 
 .settings-header {
@@ -119,6 +212,7 @@ body {
 
 .settings-body {
     padding: 24px 28px;
+    overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
 }
@@ -212,12 +306,37 @@ body {
     transition: all 0.2s ease;
 }
 
+.setting-item input[type="text"] {
+    width: 250px;
+    padding: 8px 12px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    box-sizing: border-box;
+    margin-left: auto;
+    transition: all 0.2s ease;
+}
+
 .setting-item input[type="number"]:hover {
     border-color: rgba(255, 255, 255, 0.3);
     background-color: rgba(255, 255, 255, 0.08);
 }
 
+.setting-item input[type="text"]:hover {
+    border-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
 .setting-item input[type="number"]:focus {
+    outline: none;
+    border-color: #007BFF;
+    background-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+.setting-item input[type="text"]:focus {
     outline: none;
     border-color: #007BFF;
     background-color: rgba(255, 255, 255, 0.1);
@@ -251,6 +370,49 @@ body {
 .setting-item select option {
     background-color: #1a1a1a;
     color: white;
+}
+
+/* Colormap controls row */
+.cmap-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 250px;
+}
+
+.cmap-controls select {
+    flex: 1;
+    min-width: 0;
+}
+
+.cmap-action-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.cmap-action-btn:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background-color: rgba(255, 255, 255, 0.12);
+    color: white;
+}
+
+.cmap-delete-btn:hover {
+    border-color: rgba(255, 80, 80, 0.6);
+    background-color: rgba(255, 80, 80, 0.15);
+    color: #ff6666;
 }
 
 .unit {
@@ -292,12 +454,24 @@ body {
 /* Mobile responsive adjustments */
 @media (max-width: 600px) {
     #settings-panel {
-        width: 95%;
+        left: 8px;
+        right: 8px;
+        top: calc(env(safe-area-inset-top, 0px) + 8px);
+        bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+        transform: none;
+        width: auto;
+        height: auto;
         max-width: none;
+        border-radius: 12px;
+    }
+
+    .settings-container {
+        height: 100%;
+        max-height: none;
     }
 
     .settings-header {
-        padding: 14px 16px;
+        padding: 12px 14px;
     }
 
     .settings-header h2 {
@@ -305,26 +479,43 @@ body {
     }
 
     .settings-body {
-        padding: 16px;
+        padding: 12px 14px;
     }
 
     .setting-item {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: stretch;
         gap: 8px;
+    }
+
+    .setting-item label {
+        white-space: normal;
     }
 
     .input-group {
         width: 100%;
+        min-width: 0;
     }
 
     .setting-item input[type="number"],
+    .setting-item input[type="text"],
     .setting-item select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .cmap-controls {
+        min-width: 0;
         width: 100%;
     }
 
+    .cmap-controls select {
+        width: 100%;
+        min-width: 0;
+    }
+
     .settings-footer {
-        padding: 14px 16px;
+        padding: 10px 14px;
     }
 
     .version-item {
@@ -431,11 +622,35 @@ input:focus {
     padding: 5px;
     font-size: 12px;
     border-radius: 5px;
+    position: fixed;
+    right: 12px;
+    bottom: 62px;
+    z-index: 1004;
 }
 
 @media (max-width: 600px) {
+    .bottom-status-controls {
+        gap: 8px;
+    }
+
+    .icon-control {
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+    }
+
+    .bottom-status-right {
+        gap: 6px;
+    }
+
+    #radar-runtime-status {
+        max-width: 56vw;
+        font-size: 12px;
+    }
+
     .leaflet-control-attribution {
         font-size: 10px; /* Smaller font size on mobile */
         padding: 3px;
+        bottom: 102px;
     }
 }

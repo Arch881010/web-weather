@@ -1,5 +1,11 @@
 // Creates a new map
-const map = L.map("map").setView([39.8283, -98.5795], 5); // Centered on the US
+const map = L.map("map", {
+	preferCanvas: true,
+	inertia: true,
+	zoomAnimation: true,
+	fadeAnimation: false,
+	markerZoomAnimation: true,
+}).setView([39.8283, -98.5795], 5); // Centered on the US
 
 map.on('zoomend', addCountyBorders);
 
@@ -7,12 +13,14 @@ map.on('zoomend', addCountyBorders);
 const baseLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
 	attribution:
 		'&copy; <a href="https://carto.com/attributions">CARTO</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+	updateWhenIdle: true,
 }).addTo(map);
 
 // Add bright labels layer on top
 const labelsLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
 	attribution: '',
-	pane: 'overlayPane'
+	pane: 'overlayPane',
+	updateWhenIdle: true,
 }).addTo(map);
 
 document.dispatchEvent(mapLoadedEvent);

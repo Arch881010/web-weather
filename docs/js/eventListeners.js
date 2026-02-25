@@ -45,6 +45,7 @@ document.addEventListener("mapLoaded", () => {
 	updateRadarLayer();
 	addCountyBorders();
 	fetchCountyBorders();
+	addAllMarkers();
 
 	updateWeatherAlerts();
 	addCountdown().then(() => updateCountdown());
