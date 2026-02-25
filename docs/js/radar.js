@@ -4,8 +4,12 @@ let radarSelectedSite = null;
 let radarLastKey = null;
 let radarLastSite = null;
 let radarLastProduct = null;
+let radarLastCmap = null;
 let radarNeedsInitialForce = true;
 let radarActiveMode = null;
+let radarFetchController = null; // AbortController for in-flight fetch
+const RADAR_SWEEP_CACHE = new Map(); // browser-side sweep data cache
+const RADAR_SWEEP_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
@@ -303,20 +307,44 @@ function updateSelectedRadarLabel(site) {
 
 // ── Client-side canvas rendering from sweep data (Attic Radar style) ──
 
-async function fetchSweepData(site, force = false) {
+async function fetchSweepData(site, force = false, signal = null) {
     const radarApi = getRadarApiConfig();
     const base = radarApi.base;
     const product = normalizeRadarProduct(radarApi.product || "reflectivity");
+    const cacheKey = `${site.toUpperCase()}:${product}`;
+
+    // Check browser-side cache (skip if force refresh)
+    if (!force) {
+        const cached = RADAR_SWEEP_CACHE.get(cacheKey);
+        if (cached && (Date.now() - cached.ts) < RADAR_SWEEP_CACHE_TTL_MS) {
+            console.log(`[radar] Using cached sweep for ${cacheKey} (age ${((Date.now() - cached.ts) / 1000).toFixed(0)}s)`);
+            return cached.data;
+        }
+    }
+
     const url = new URL(`${base}/api/radar/sweep`);
     url.searchParams.set("site", site.toUpperCase());
     if (product) url.searchParams.set("product", product);
     if (force) url.searchParams.set("force", "1");
-    const response = await fetch(url.toString());
+    const fetchOpts = signal ? { signal } : {};
+    const response = await fetch(url.toString(), fetchOpts);
     if (!response.ok) {
         const text = await response.text();
         throw new Error(`Radar sweep failed (${response.status}): ${text}`);
     }
-    return response.json();
+    const data = await response.json();
+
+    // Store in browser cache
+    RADAR_SWEEP_CACHE.set(cacheKey, { data, ts: Date.now() });
+
+    // Evict stale entries
+    for (const [k, v] of RADAR_SWEEP_CACHE) {
+        if (Date.now() - v.ts > RADAR_SWEEP_CACHE_TTL_MS) {
+            RADAR_SWEEP_CACHE.delete(k);
+        }
+    }
+
+    return data;
 }
 
 function setRadarLayerFromSweep(sweepData, opacity) {
@@ -332,6 +360,7 @@ function setRadarLayerFromSweep(sweepData, opacity) {
         cmap: cmap,
     }).addTo(map);
 
+    updateRadarColorbar(product, sweepData.vmin, sweepData.vmax, cmap);
     return true;
 }
 
@@ -362,13 +391,26 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         radarSelectedSite = site;
         const requestedProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
 
+        // Cancel any in-flight fetch before starting a new one
+        if (radarFetchController) {
+            radarFetchController.abort();
+            radarFetchController = null;
+        }
+        radarFetchController = new AbortController();
+        const signal = radarFetchController.signal;
+
+        setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(requestedProduct)} for ${site}...`);
+
         // Client-side canvas rendering from sweep data (Attic Radar style)
-        const sweepData = await fetchSweepData(site, force);
+        const sweepData = await fetchSweepData(site, force, signal);
+        radarFetchController = null;
         radarSweepSupported = true;
 
         const key = sweepData.key || "";
         const resolvedSite = (sweepData.site || site).toUpperCase();
         const resolvedProduct = normalizeRadarProduct(sweepData.product || requestedProduct);
+
+        const currentCmap = getColormapForProduct(resolvedProduct);
 
         if (
             !force &&
@@ -376,7 +418,8 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
             key &&
             radarLastKey === key &&
             radarLastSite === resolvedSite &&
-            radarLastProduct === resolvedProduct
+            radarLastProduct === resolvedProduct &&
+            radarLastCmap === currentCmap
         ) {
             radarLayer.setOpacity(config.opacity.radar);
             updateSelectedRadarLabel(resolvedSite);
@@ -390,6 +433,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         radarLastKey = key;
         radarLastSite = resolvedSite;
         radarLastProduct = resolvedProduct;
+        radarLastCmap = currentCmap;
         radarSiteFailureCounts[resolvedSite] = 0;
 
         updateSelectedRadarLabel(resolvedSite);
@@ -400,6 +444,11 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         );
         return true;
     } catch (error) {
+        // If aborted (user switched site), silently ignore
+        if (error.name === "AbortError") {
+            console.log("Radar fetch aborted (site changed)");
+            return false;
+        }
         const site = (radarSiteCode || "").trim().toUpperCase();
         if (site) {
             const currentFailures = (radarSiteFailureCounts[site] || 0) + 1;
@@ -450,10 +499,16 @@ function removeRadar() {
     radarLastKey = null;
     radarLastSite = null;
     radarLastProduct = null;
+    radarLastCmap = null;
     radarNeedsInitialForce = true;
     radarActiveMode = null;
+    if (radarFetchController) {
+        radarFetchController.abort();
+        radarFetchController = null;
+    }
     setRadarSiteStatus("");
     setBottomRadarStatus("");
+    hideRadarColorbar();
     console.log("Radar layer removed");
 }
 
@@ -487,16 +542,7 @@ function updateRadarLayer(isAutomaticTick = false) {
         } else {
             setRadarSiteStatus(`Current site: ${radarSite}`);
         }
-        if (RADAR_AUTO_PRODUCTS.has(radarProduct)) {
-            setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(radarProduct)} for ${radarSite}...`);
-        } else {
-            setBottomRadarStatus(`Radar Status: On-demand ${radarProductLabel(radarProduct)} for ${radarSite}`);
-            if (isAutomaticTick) {
-                startRadarAutoRefresh();
-                radarActiveMode = "site";
-                return;
-            }
-        }
+        setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(radarProduct)} for ${radarSite}...`);
         radarNeedsInitialForce = false;
         radarActiveMode = "site";
         loadRadarForSite(radarSite, null, forceNewest).then(() => {

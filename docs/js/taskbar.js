@@ -152,4 +152,20 @@ document.addEventListener("DOMContentLoaded", () => {
 		const currentProduct = document.getElementById("radar-site-product")?.value || "reflectivity";
 		updateColormapDropdown(currentProduct);
 	}
+
+	// ── Colormap: live-update layer + colorbar when selection changes ──
+	const cmapSelect = document.getElementById("radar-cmap");
+	if (cmapSelect) {
+		cmapSelect.addEventListener("change", () => {
+			const product = document.getElementById("radar-site-product")?.value || "reflectivity";
+			const newCmap = cmapSelect.value;
+			if (newCmap) {
+				setColormapForProduct(product, newCmap);
+				// Rebuild the layer in-place with the new colormap (no server re-fetch)
+				if (radarLayer && radarLayer._sweepData) {
+					setRadarLayerFromSweep(radarLayer._sweepData, config.opacity.radar);
+				}
+			}
+		});
+	}
 });

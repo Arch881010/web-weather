@@ -27,31 +27,37 @@ const NWS_REF_COLORS = [
 
 // ── NWS-style Velocity Colormap (AtticRadar VEL1 color table) ──
 // [normalized (-1..1), R, G, B]
-// Derived from the standard NWS velocity gradient:
+// AtticRadar VEL1 color table: -73 to 73 m/s
 //   inbound (negative): light pink → hot pink → purple → blue → cyan → green → dark green
 //   zero: gray
 //   outbound (positive): dark red → red → pink → yellow → orange → brown → black
 const NWS_VEL_STOPS = [
     [-1.000, 255, 204, 230],   //   0.00%  light pink (max inbound)
     [-0.857, 252,   0, 130],   //   7.14%  hot pink
-    [-0.714, 110,   3, 151],   //  14.29%  purple
+    [-0.714, 109,   2, 150],   //  14.29%  purple (end)
     [-0.644,  22,  13, 156],   //  17.86%  dark blue (end of segment)
     [-0.643,  24,  39, 165],   //  17.86%  blue (start of segment)
-    [-0.571,  30, 111, 188],   //  21.43%  medium blue
-    [-0.500,  44, 213, 223],   //  25.00%  cyan
-    [-0.357, 181, 237, 239],   //  32.14%  light cyan
-    [-0.286,   3, 238,   3],   //  35.71%  bright green
-    [-0.072,   0, 100,   0],   //  46.43%  dark green (end of segment)
-    [-0.071,  78, 121,  76],   //  46.43%  olive gray (start of segment)
+    [-0.572,  30, 111, 188],   //  21.43%  medium blue (end)
+    [-0.571,  40, 204, 220],   //  25.00%  cyan (end)
+    [-0.500,  47, 222, 226],   //  25.00%  cyan (start)
+    [-0.358, 181, 237, 239],   //  32.14%  light cyan (end)
+    [-0.357, 181, 237, 239],   //  32.14%  light cyan (start)
+    [-0.287,   2, 241,   3],   //  35.71%  bright green (end)
+    [-0.286,   3, 234,   2],   //  35.71%  bright green (start)
+    [-0.072,   0, 100,   0],   //  46.43%  dark green (end)
+    [-0.071,  78, 121,  76],   //  46.43%  olive gray (start)
     [-0.001, 116, 131, 112],   //  50.00%  gray-green (zero left)
     [ 0.001, 137, 117, 122],   //  50.00%  gray-red (zero right)
-    [ 0.070, 130,  51,  59],   //  53.57%  red-brown (end of segment)
-    [ 0.071, 109,   0,   0],   //  53.57%  dark red (start of segment)
-    [ 0.285, 242,   0,   7],   //  64.29%  red (end of segment)
-    [ 0.286, 249,  51,  76],   //  64.29%  red-pink (start of segment)
-    [ 0.393, 254, 155, 204],   //  69.64%  pink
-    [ 0.429, 254, 230, 166],   //  71.43%  light yellow
-    [ 0.571, 254, 146,  82],   //  78.57%  orange
+    [ 0.070, 130,  51,  59],   //  53.57%  red-brown (end)
+    [ 0.071, 109,   0,   0],   //  53.57%  dark red (start)
+    [ 0.285, 242,   0,   7],   //  64.29%  red (end)
+    [ 0.286, 249,  51,  76],   //  64.29%  red-pink (start)
+    [ 0.393, 255, 149, 207],   //  69.64%  pink (end)
+    [ 0.394, 253, 160, 201],   //  69.64%  pink (start)
+    [ 0.428, 255, 232, 172],   //  71.43%  light yellow (end)
+    [ 0.429, 253, 228, 160],   //  71.43%  light yellow (start)
+    [ 0.571, 253, 149,  83],   //  78.57%  orange (end)
+    [ 0.572, 254, 142,  80],   //  78.57%  orange (start)
     [ 0.857, 110,  14,   9],   //  92.86%  dark brown
     [ 1.000,   0,   0,   0],   // 100.00%  black (max outbound)
 ];
@@ -476,53 +482,26 @@ const RadarCanvasLayer = L.GridLayer.extend({
                 const range = Math.sqrt(rangeSq);
                 if (range >= maxRangeM) continue;
 
-                // Fractional gate index for bilinear interpolation
-                const gateF = (range - firstRange) * invGateWidth;
-                const g0 = gateF | 0; // floor
-                if (g0 >= numGates) continue;
-                const g1 = g0 + 1 < numGates ? g0 + 1 : g0;
-                const gT = gateF - g0; // fractional part
+                // Gate index (nearest neighbor)
+                const gateIdx = ((range - firstRange) * invGateWidth) | 0;
+                if (gateIdx >= numGates) continue;
 
                 // Azimuth from north, clockwise
                 let azimuth = Math.atan2(dx, dy) * RAD_TO_DEG;
                 if (azimuth < 0) azimuth += 360;
 
-                // Fractional azimuth index for bilinear interpolation
-                const azF = ((azimuth - azOffset + 360) % 360) * invAzStep;
-                let a0 = Math.floor(azF) % numRadials;
-                if (a0 < 0) a0 += numRadials;
-                const a1 = (a0 + 1) % numRadials;
-                const aT = azF - Math.floor(azF); // fractional part
+                // Nearest azimuth index
+                let azIdx = Math.round(((azimuth - azOffset + 360) % 360) * invAzStep) % numRadials;
+                if (azIdx < 0) azIdx += numRadials;
 
-                // Sample 4 corners: (a0,g0) (a1,g0) (a0,g1) (a1,g1)
-                const v00 = gateData[a0 * numGates + g0];
-                const v10 = gateData[a1 * numGates + g0];
-                const v01 = gateData[a0 * numGates + g1];
-                const v11 = gateData[a1 * numGates + g1];
+                const val = gateData[azIdx * numGates + gateIdx];
+                if (val === noData) continue;
 
-                // Bilinear blend — if all 4 corners have data, interpolate
-                // otherwise fall back to nearest neighbor
-                let r, g, b, a;
-                const allValid = v00 !== noData && v10 !== noData && v01 !== noData && v11 !== noData;
-
-                if (allValid) {
-                    // Interpolate in color space for smooth result
-                    const i00 = v00 << 2, i10 = v10 << 2, i01 = v01 << 2, i11 = v11 << 2;
-                    const w00 = (1 - aT) * (1 - gT);
-                    const w10 = aT * (1 - gT);
-                    const w01 = (1 - aT) * gT;
-                    const w11 = aT * gT;
-                    r = colorLUT[i00] * w00 + colorLUT[i10] * w10 + colorLUT[i01] * w01 + colorLUT[i11] * w11;
-                    g = colorLUT[i00+1] * w00 + colorLUT[i10+1] * w10 + colorLUT[i01+1] * w01 + colorLUT[i11+1] * w11;
-                    b = colorLUT[i00+2] * w00 + colorLUT[i10+2] * w10 + colorLUT[i01+2] * w01 + colorLUT[i11+2] * w11;
-                    a = colorLUT[i00+3] * w00 + colorLUT[i10+3] * w10 + colorLUT[i01+3] * w01 + colorLUT[i11+3] * w11;
-                } else {
-                    // Nearest neighbor fallback at data edges
-                    const nearest = (aT < 0.5 ? (gT < 0.5 ? v00 : v01) : (gT < 0.5 ? v10 : v11));
-                    if (nearest === noData) continue;
-                    const ni = nearest << 2;
-                    r = colorLUT[ni]; g = colorLUT[ni+1]; b = colorLUT[ni+2]; a = colorLUT[ni+3];
-                }
+                const ci = val << 2;
+                const r = colorLUT[ci];
+                const g = colorLUT[ci + 1];
+                const b = colorLUT[ci + 2];
+                const a = colorLUT[ci + 3];
 
                 if (a < 1) continue;
 
@@ -543,4 +522,129 @@ const RadarCanvasLayer = L.GridLayer.extend({
  */
 function radarCanvasLayer(sweepData, options) {
     return new RadarCanvasLayer(sweepData, options);
+}
+
+// ── Radar Colorbar Legend ──
+let _colorbarProduct = null;
+let _colorbarVmin = null;
+let _colorbarVmax = null;
+
+/**
+ * Generate nice round tick values for a given range.
+ */
+function _generateNiceTicks(vmin, vmax, maxTicks) {
+    const range = vmax - vmin;
+    if (range <= 0) return [vmin];
+    const rough = range / maxTicks;
+    const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+    const norm = rough / mag;
+    let step;
+    if (norm < 1.5) step = 1 * mag;
+    else if (norm < 3) step = 2 * mag;
+    else if (norm < 7) step = 5 * mag;
+    else step = 10 * mag;
+
+    const ticks = [];
+    let start = Math.ceil(vmin / step) * step;
+    // Snap to avoid floating point drift
+    start = Math.round(start / step) * step;
+    for (let v = start; v <= vmax + step * 0.001; v += step) {
+        ticks.push(Math.round(v / step) * step);
+    }
+    return ticks;
+}
+
+/**
+ * Draw / update the colorbar legend at the bottom of the screen.
+ * Call after rendering a new sweep or changing colormaps.
+ */
+function updateRadarColorbar(product, vmin, vmax, cmap) {
+    const bar = document.getElementById("radar-colorbar");
+    if (!bar) return;
+
+    _colorbarProduct = product;
+    _colorbarVmin = vmin;
+    _colorbarVmax = vmax;
+
+    const lut = buildRadarColorLUT(product, vmin, vmax, cmap);
+
+    // Draw gradient on canvas
+    const canvas = document.getElementById("colorbar-canvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    for (let x = 0; x < w; x++) {
+        const i = Math.round((x / (w - 1)) * 254);
+        const idx = i * 4;
+        ctx.fillStyle = `rgba(${lut[idx]},${lut[idx + 1]},${lut[idx + 2]},${lut[idx + 3] / 255})`;
+        ctx.fillRect(x, 0, 1, h);
+    }
+
+    // Tick labels
+    const labels = document.getElementById("colorbar-labels");
+    if (labels) {
+        labels.innerHTML = "";
+        const ticks = _generateNiceTicks(vmin, vmax, product === "cc" ? 5 : 6);
+        ticks.forEach(val => {
+            const frac = (val - vmin) / (vmax - vmin);
+            if (frac < -0.01 || frac > 1.01) return;
+            const span = document.createElement("span");
+            span.style.left = (Math.min(1, Math.max(0, frac)) * 100) + "%";
+            if (product === "cc") {
+                span.textContent = val.toFixed(val >= 1 ? 1 : 2);
+            } else {
+                span.textContent = Math.round(val);
+            }
+            labels.appendChild(span);
+        });
+    }
+
+    // Bind tooltip events (once)
+    if (!canvas._colorbarBound) {
+        canvas.addEventListener("mousemove", _colorbarMouseMove);
+        canvas.addEventListener("mouseleave", _colorbarMouseLeave);
+        canvas._colorbarBound = true;
+    }
+
+    bar.style.display = "";
+}
+
+function _colorbarMouseMove(e) {
+    const canvas = e.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const frac = Math.max(0, Math.min(1, x / rect.width));
+    const val = _colorbarVmin + frac * (_colorbarVmax - _colorbarVmin);
+
+    const tooltip = document.getElementById("colorbar-tooltip");
+    if (!tooltip) return;
+
+    let text;
+    if (_colorbarProduct === "velocity" || _colorbarProduct === "srv") {
+        const mph = val * 2.23694;
+        text = `${val.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
+    } else if (_colorbarProduct === "cc") {
+        text = `\u03C1HV: ${val.toFixed(3)}`;
+    } else if (_colorbarProduct === "reflectivity") {
+        text = `${val.toFixed(1)} dBZ`;
+    } else {
+        text = val.toFixed(1);
+    }
+
+    tooltip.textContent = text;
+    tooltip.style.left = x + "px";
+    tooltip.style.display = "block";
+}
+
+function _colorbarMouseLeave() {
+    const tooltip = document.getElementById("colorbar-tooltip");
+    if (tooltip) tooltip.style.display = "none";
+}
+
+function hideRadarColorbar() {
+    const bar = document.getElementById("radar-colorbar");
+    if (bar) bar.style.display = "none";
 }

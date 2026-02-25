@@ -145,28 +145,6 @@ class RadarCacheManager:
             cache_entry.key,
         )
 
-        # Pre-extract other auto products in background (single thread, sequential)
-        if resolved_product in self.auto_products:
-            pending = []
-            for other_product in self.auto_products:
-                if other_product != resolved_product:
-                    other_path = self._sweep_cache_path(site, key_name, other_product)
-                    if not other_path.exists():
-                        pending.append((other_path, other_product))
-            if pending:
-                def _bg_extract(items, lp, s, k):
-                    for op, prod in items:
-                        try:
-                            self._extract_sweep_via_subprocess(lp, op, prod, s, k)
-                        except Exception as exc:
-                            print(f"[radar] background extract {s} {prod} failed: {exc}")
-                t = threading.Thread(
-                    target=_bg_extract,
-                    args=(pending, Path(cache_entry.local_path), site, cache_entry.key),
-                    daemon=True,
-                )
-                t.start()
-
         return sweep_path
 
     def _extract_sweep_via_subprocess(
@@ -354,9 +332,6 @@ class RadarCacheManager:
             self._save_index()
 
         print(f"[radar] cached {site}: {Path(latest_key).name} ({len(payload)} bytes)")
-
-        # Pre-extract sweep data for all auto products
-        self._schedule_background_extraction(entry)
 
         return entry
 
@@ -943,8 +918,8 @@ def _extract_sweep_task(task: dict) -> None:
                 max(data_abs_max * 1.05, 30.0) if data_abs_max > 0 else 30.0
             )
 
-        vmin = -abs(nyquist_velocity)
-        vmax = abs(nyquist_velocity)
+        vmin = -80.0
+        vmax = 80.0
 
         if effective_product == "srv" and enable_srv_dealias:
             try:
@@ -1039,6 +1014,28 @@ def _extract_sweep_task(task: dict) -> None:
         del normalized
     del filled, valid
     gc.collect()
+
+    # ── Speckle filter: remove isolated single-gate outliers ──
+    if effective_product in ("reflectivity", "velocity", "srv"):
+        has_data = quantized != 255
+        # Check along range axis (axis=1)
+        prev_range = np.roll(has_data, 1, axis=1)
+        next_range = np.roll(has_data, -1, axis=1)
+        prev_range[:, 0] = True   # don't remove first gate
+        next_range[:, -1] = True  # don't remove last gate
+        # Check along azimuth axis (axis=0)
+        prev_az = np.roll(has_data, 1, axis=0)
+        next_az = np.roll(has_data, -1, axis=0)
+        # Isolated = has data but ALL 4 neighbors are no-data
+        isolated = has_data & ~prev_range & ~next_range & ~prev_az & ~next_az
+        n_removed = int(isolated.sum())
+        if n_removed > 0:
+            quantized[isolated] = 255
+            print(
+                f"[radar] Speckle filter removed {n_removed} isolated gates",
+                file=sys.stderr,
+            )
+        del has_data, prev_range, next_range, prev_az, next_az, isolated
 
     data_b64 = base64.b64encode(quantized.tobytes()).decode("ascii")
 
