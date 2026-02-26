@@ -561,10 +561,7 @@ function getSevereStorm(feature) {
 			params.parameters.hail.maxHail != "N/A"
 		) {
 			params.parameters.hail.maxHail += '"';
-		}
-
-		if (params.parameters.hail.maxHail.replaceAll('"', "") == "0.75")
-			console.warn(params);
+		} 
 
 		return params;
 	} catch (e) {

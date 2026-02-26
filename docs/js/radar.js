@@ -473,7 +473,7 @@ function radarProductLabel(product) {
 }
 
 function handleRepeatedRadarSiteFailure(site, error) {
-    const message = `Radar site ${site} failed repeatedly. Switched to WMS. You may want to hide that site.`;
+    const message = `Radar site ${site} failed repeatedly. Switched to WMS.`;
     console.error(message, error);
 
     if (!radarSiteFailureNotified.has(site)) {

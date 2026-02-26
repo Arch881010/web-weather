@@ -16,7 +16,6 @@ async function addRadarMarkers() {
             iconSize: [40, 20],
             iconAnchor: [20, 10]
         });
-        console.log(coordinates);
         var marker = L.marker(coordinates, { icon: radarIcon }).addTo(map);
         marker.on("click", (e) => {
             setRadarSitePreference(radarName, true);
