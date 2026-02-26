@@ -35,27 +35,28 @@ class RadarCacheEntry:
 
 
 class RadarCacheManager:
-    # Level III product → NWS S3 mnemonic (Unidata bucket)
-    # Only classification actually uses Level III — reflectivity, velocity,
-    # and SRV always use Level II for maximum resolution (720 radials, 250m gates).
+    # Level III product → NWS S3 mnemonics (Unidata bucket), in preference order.
+    # Reflectivity tries NZB (Super-Res) first, falls back to N0B (Digital).
+    # Velocity and SRV still use Level II for maximum resolution (720 radials, 250m gates).
     LEVEL3_PRODUCT_MNEMONICS = {
-        "classification": "N0H", # Hydrometeor Classification
+        "reflectivity": ["NZB", "N0B"],  # Super-Res Reflectivity → Digital Reflectivity
+        "classification": ["N0H"],        # Hydrometeor Classification
     }
 
     # Products that are ALWAYS Level III regardless of toggle
-    LEVEL3_ONLY_PRODUCTS = {"classification"}
+    LEVEL3_ONLY_PRODUCTS = {"reflectivity", "classification"}
 
     @staticmethod
     def _is_level3_request(product: str, level: Optional[int] = None) -> bool:
         """Return True when this request should use Level III data.
-        Only classification goes through Level III — all other products
+        Reflectivity uses NZB and classification uses N0H — other products
         use Level II for best resolution."""
         return product in RadarCacheManager.LEVEL3_ONLY_PRODUCTS
 
     def __init__(
         self,
         cache_dir: Path,
-        poll_interval_seconds: int = 90,
+        poll_interval_seconds: int = 60,
         timeout_seconds: int = 20,
         enable_srv_dealias: bool = False,
     ):
@@ -178,20 +179,35 @@ class RadarCacheManager:
         return self._get_or_extract_level3_product(site, "classification", force=force)
 
     def _get_or_extract_level3_product(self, site: str, product: str, force: bool = False) -> Path:
-        """Handle any Level III product — avoids downloading Level II."""
-        mnemonic = self.LEVEL3_PRODUCT_MNEMONICS.get(product)
-        if not mnemonic:
+        """Handle any Level III product — avoids downloading Level II.
+        Tries mnemonics in preference order (e.g. NZB then N0B for reflectivity)."""
+        mnemonics = self.LEVEL3_PRODUCT_MNEMONICS.get(product)
+        if not mnemonics:
             raise ValueError(f"No Level III mnemonic for product: {product}")
-        l3_path, l3_key = self._get_or_refresh_level3(site, mnemonic, force=force)
-        sweep_path = self._sweep_cache_path(site, l3_key, product)
 
-        if sweep_path.exists() and not force:
-            return sweep_path
+        last_error = None
+        for mnemonic in mnemonics:
+            try:
+                l3_path, l3_key = self._get_or_refresh_level3(site, mnemonic, force=force)
+                sweep_path = self._sweep_cache_path(site, l3_key, product)
 
-        self._extract_sweep_via_subprocess(
-            l3_path, sweep_path, product, site, l3_key, level=3
+                if sweep_path.exists() and not force:
+                    return sweep_path
+
+                self._extract_sweep_via_subprocess(
+                    l3_path, sweep_path, product, site, l3_key, level=3
+                )
+                return sweep_path
+            except Exception as exc:
+                last_error = exc
+                print(
+                    f"[radar] Level III {mnemonic} failed for {site}, "
+                    f"trying next fallback: {exc}"
+                )
+
+        raise RuntimeError(
+            f"All Level III mnemonics failed for {product} on {site}: {last_error}"
         )
-        return sweep_path
 
     def _get_or_refresh_level3(
         self, site: str, mnemonic: str, force: bool = False
@@ -296,13 +312,13 @@ class RadarCacheManager:
                 f"Sweep extraction failed (exit {result.returncode}): {stderr}"
             )
 
-    def _schedule_background_extraction(self, cache_entry: RadarCacheEntry) -> None:
-        """Pre-extract sweep data for all auto_products after new data arrives."""
-        site = self._normalize_site(cache_entry.site)
-        key_name = Path(cache_entry.key).name
+    def _schedule_background_extraction(self, site: str) -> None:
+        """Pre-extract sweep data for all auto_products after new data arrives.
+        Handles both Level II and Level III products."""
+        site = self._normalize_site(site)
 
         for product in self.auto_products:
-            token = f"{site}:{key_name}:{product}"
+            token = f"{site}:{product}"
             with self.lock:
                 if token in self._extract_inflight:
                     continue
@@ -310,27 +326,17 @@ class RadarCacheManager:
 
             t = threading.Thread(
                 target=self._run_background_extraction,
-                args=(cache_entry, product, token),
+                args=(site, product, token),
                 name=f"radar-extract-{site}-{product}",
                 daemon=True,
             )
             t.start()
 
     def _run_background_extraction(
-        self, cache_entry: RadarCacheEntry, product: str, token: str
+        self, site: str, product: str, token: str
     ) -> None:
-        site = self._normalize_site(cache_entry.site)
-        key_name = Path(cache_entry.key).name
         try:
-            sweep_path = self._sweep_cache_path(site, key_name, product)
-            if not sweep_path.exists():
-                self._extract_sweep_via_subprocess(
-                    Path(cache_entry.local_path),
-                    sweep_path,
-                    product,
-                    site,
-                    cache_entry.key,
-                )
+            self.get_or_extract_sweep(site, product_name=product, force=False)
         except Exception as exc:
             print(
                 f"[radar] background sweep extraction failed for {site} {product}: {exc}"
@@ -351,6 +357,7 @@ class RadarCacheManager:
                         break
                     try:
                         self._refresh_site(site, force=False)
+                        self._schedule_background_extraction(site)
                     except Exception as exc:
                         self._record_background_refresh_failure(site, exc)
                         print(f"[radar] background refresh failed for {site}: {exc}")
@@ -417,6 +424,10 @@ class RadarCacheManager:
             next_poll_utc=next_poll.isoformat(),
         )
 
+        # Clean up old files before updating the entry
+        if current and current.key != latest_key:
+            self._cleanup_old_files(current)
+
         with self.lock:
             self.entries[site] = entry
             self.refresh_failures[site] = 0
@@ -426,6 +437,30 @@ class RadarCacheManager:
         print(f"[radar] cached {site}: {Path(latest_key).name} ({len(payload)} bytes)")
 
         return entry
+
+    # ── Old file cleanup ──
+
+    def _cleanup_old_files(self, old_entry: RadarCacheEntry) -> None:
+        """Delete the old Level II file and its associated sweep extracts."""
+        # Delete the old raw Level II file
+        old_path = Path(old_entry.local_path)
+        if old_path.exists():
+            try:
+                old_path.unlink()
+                print(f"[radar] deleted old file: {old_path.name}")
+            except OSError as exc:
+                print(f"[radar] failed to delete old file {old_path.name}: {exc}")
+
+        # Delete associated sweep extract files (e.g. KLZK_<key>_sweep_*.json.gz)
+        old_key_name = Path(old_entry.key).name
+        site = self._normalize_site(old_entry.site)
+        pattern = f"{site}_{old_key_name}_sweep_*"
+        for sweep_file in self.cache_dir.glob(pattern):
+            try:
+                sweep_file.unlink()
+                print(f"[radar] deleted old sweep: {sweep_file.name}")
+            except OSError as exc:
+                print(f"[radar] failed to delete old sweep {sweep_file.name}: {exc}")
 
     # ── Data source helpers ──
 
