@@ -321,14 +321,13 @@ function drawPolygons(data) {
 	const size = 4;
 	const change = 2;
 
-	// Add the black border around each polygon
-	if (window.countdown)
-		clearLayers([
-			"weather-alerts",
-			"weather-alerts-border",
-			"weather-alerts-background",
-			"alert-extras",
-		]);
+	// Always clear previous alert layers so expired alerts disappear
+	clearLayers([
+		"weather-alerts",
+		"weather-alerts-border",
+		"weather-alerts-background",
+		"alert-extras",
+	]);
 
 	if (config.opacity.polygon == 0) return;
 

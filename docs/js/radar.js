@@ -9,7 +9,7 @@ let radarNeedsInitialForce = true;
 let radarActiveMode = null;
 let radarFetchController = null; // AbortController for in-flight fetch
 const RADAR_SWEEP_CACHE = new Map(); // browser-side sweep data cache
-const RADAR_SWEEP_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const RADAR_SWEEP_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
@@ -135,17 +135,43 @@ async function importColormapFromFile(product, file) {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
-                const data = JSON.parse(e.target.result);
-                const name = data.name || file.name.replace(/\.json$/i, "");
-                const type = data.type || "stepped";
-                const stops = data.stops || data.colormap || data;
+                const text = e.target.result;
+                const isPal = /\.pal$/i.test(file.name);
 
-                if (!Array.isArray(stops) || stops.length === 0) {
-                    throw new Error("Invalid colormap: 'stops' must be a non-empty array");
+                let name;
+                let cmapData;
+
+                if (isPal) {
+                    // Simple .pal support: lines of "R G B" (0-255). Build an interpolated colormap.
+                    const lines = text
+                        .split(/\r?\n/)
+                        .map((ln) => ln.trim())
+                        .filter((ln) => ln && !ln.startsWith("#"));
+                    const colors = lines
+                        .map((ln) => ln.split(/[\s,]+/).map((v) => parseInt(v, 10)))
+                        .filter((arr) => arr.length >= 3 && arr.every((v) => Number.isFinite(v)));
+                    if (!colors.length) {
+                        throw new Error("Invalid .pal file: expected lines of 'R G B'");
+                    }
+                    const stops = colors.map((rgb, idx) => {
+                        const t = colors.length === 1 ? 1 : idx / (colors.length - 1);
+                        return [t, rgb[0], rgb[1], rgb[2], 200];
+                    });
+                    name = file.name.replace(/\.pal$/i, "");
+                    cmapData = { type: "interpolated", stops };
+                } else {
+                    const data = JSON.parse(text);
+                    name = data.name || file.name.replace(/\.json$/i, "");
+                    const type = data.type || "stepped";
+                    const stops = data.stops || data.colormap || data;
+
+                    if (!Array.isArray(stops) || stops.length === 0) {
+                        throw new Error("Invalid colormap: 'stops' must be a non-empty array");
+                    }
+
+                    cmapData = { type: type, stops: stops };
+                    if (data.alpha != null) cmapData.alpha = data.alpha;
                 }
-
-                const cmapData = { type: type, stops: stops };
-                if (data.alpha != null) cmapData.alpha = data.alpha;
 
                 const normalized = normalizeRadarProduct(product);
                 if (!customColormaps[normalized]) customColormaps[normalized] = {};

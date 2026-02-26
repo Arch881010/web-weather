@@ -61,6 +61,9 @@ class RadarCacheManager:
         self._extract_inflight: Set[str] = set()
         # Only allow one extraction subprocess at a time to prevent OOM
         self._extract_semaphore = threading.Semaphore(1)
+        # Level III file cache: { "SITE:MNEMONIC": { "path": Path, "key": str, "ts": datetime } }
+        self._level3_cache: Dict[str, dict] = {}
+        self._level3_cache_ttl = timedelta(minutes=5)
 
         self._load_index()
 
@@ -130,6 +133,11 @@ class RadarCacheManager:
     ) -> Path:
         site = self._normalize_site(site)
         resolved_product = self._resolve_product_name(product_name)
+
+        # Classification uses Level III (N0H) — separate flow avoids Level II download
+        if resolved_product == "classification":
+            return self._get_or_extract_classification(site, force=force)
+
         cache_entry = self.get_or_refresh(site, force=force)
         key_name = Path(cache_entry.key).name
         sweep_path = self._sweep_cache_path(site, key_name, resolved_product)
@@ -146,6 +154,63 @@ class RadarCacheManager:
         )
 
         return sweep_path
+
+    def _get_or_extract_classification(self, site: str, force: bool = False) -> Path:
+        """Handle classification via Level III N0H — avoids downloading Level II."""
+        l3_path, l3_key = self._get_or_refresh_level3(site, "N0H", force=force)
+        sweep_path = self._sweep_cache_path(site, l3_key, "classification")
+
+        if sweep_path.exists() and not force:
+            return sweep_path
+
+        self._extract_sweep_via_subprocess(
+            l3_path, sweep_path, "classification", site, l3_key
+        )
+        return sweep_path
+
+    def _get_or_refresh_level3(
+        self, site: str, mnemonic: str, force: bool = False
+    ) -> tuple[Path, str]:
+        """Download and cache a Level III file on disk.  Returns (local_path, key_name)."""
+        cache_key = f"{site}:{mnemonic}"
+        now = self._utcnow()
+
+        with self.lock:
+            cached = self._level3_cache.get(cache_key)
+            if cached and not force:
+                age = now - cached["ts"]
+                if age < self._level3_cache_ttl and cached["path"].exists():
+                    return cached["path"], cached["key"]
+
+        data = _fetch_level3_file(site, mnemonic)
+        if data is None:
+            raise RuntimeError(
+                f"Level III product {mnemonic} not available for {site}"
+            )
+
+        # Derive a short key name from the S3 key (for sweep cache filenames)
+        station_3 = site[1:].upper() if len(site) == 4 else site.upper()
+        key_name = f"{station_3}_{mnemonic}_{now.strftime('%Y%m%d_%H%M%S')}"
+
+        local_path = self.cache_dir / f"{site}_L3_{mnemonic}_{key_name}"
+        local_path.write_bytes(data)
+        print(f"[radar] cached Level III {mnemonic} for {site}: {local_path.name} ({len(data)} bytes)")
+
+        with self.lock:
+            # Clean up old cached file
+            old = self._level3_cache.get(cache_key)
+            if old and old["path"].exists() and old["path"] != local_path:
+                try:
+                    old["path"].unlink()
+                except OSError:
+                    pass
+            self._level3_cache[cache_key] = {
+                "path": local_path,
+                "key": key_name,
+                "ts": now,
+            }
+
+        return local_path, key_name
 
     def _extract_sweep_via_subprocess(
         self,
@@ -774,6 +839,9 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
 
             self._send_json(404, {"error": "Not found"})
         except Exception as exc:
+            import traceback
+            print(f"[radar-api] 500 error: {exc}")
+            traceback.print_exc()
             self._send_json(500, {"error": str(exc)})
 
     def log_message(self, format: str, *args):
@@ -841,6 +909,12 @@ def _extract_sweep_task(task: dict) -> None:
     # Determine which fields we actually need so pyart can skip the rest.
     # read_nexrad_archive supports `exclude_fields` to reduce memory.
     _product = RadarCacheManager._resolve_product_name(product_name)
+
+    # Classification is a Level III product (N0H/HHC) — fetch separately
+    if _product == "classification":
+        _extract_classification_from_level3(task)
+        return
+
     _desired_fields = _get_desired_fields_for_product(_product)
 
     try:
@@ -856,7 +930,12 @@ def _extract_sweep_task(task: dict) -> None:
         radar, product_name
     )
     if not field:
-        raise RuntimeError(f"No {product_name} field found in Level II file")
+        available = sorted(radar.fields.keys()) if hasattr(radar, 'fields') else []
+        raise RuntimeError(
+            f"No {product_name} field found in Level II file. "
+            f"Available fields: {', '.join(available) if available else 'none'}. "
+            f"Note: classification/hydrometeor data is only available in Level III products."
+        )
 
     sweep_index = RadarCacheManager._pick_sweep_for_field(radar, field, np)
 
@@ -1068,32 +1147,144 @@ def _extract_sweep_task(task: dict) -> None:
     print(json.dumps({"status": "ok", "product": effective_product}))
 
 
-def _fetch_storm_motion_from_n0s(site: str, timeout: int = 10):
+def _extract_classification_from_level3(task: dict) -> None:
+    """Extract classification data from a locally-cached Level III N0H file.
+
+    The main process downloads and caches the Level III file, passing its
+    path via task['local_path'] so this subprocess avoids network I/O."""
+    import gc
+
+    np = importlib.import_module("numpy")
+    pyart = importlib.import_module("pyart")
+
+    local_path = Path(task["local_path"])
+    output_path = Path(task["output_path"])
+    site = task.get("site", "")
+    key = task.get("key", "")
+
+    radar = pyart.io.read_nexrad_level3(str(local_path))
+
+    # Find classification field — pyart names it based on product code
+    field = None
+    class_candidates = [
+        "radar_echo_classification",
+        "hydrometeor_classification",
+        "classification",
+        "HCLASS",
+        "EC",
+    ]
+    for candidate in class_candidates:
+        if candidate in radar.fields:
+            field = candidate
+            break
+
+    if not field:
+        # Fall back to whatever field pyart created
+        available = sorted(radar.fields.keys())
+        if available:
+            field = available[0]
+            print(
+                f"[radar] classification: using field '{field}' from Level III "
+                f"(available: {available})",
+                file=sys.stderr,
+            )
+        else:
+            raise RuntimeError(
+                "No fields found in Level III classification product"
+            )
+
+    # Level III products typically have a single sweep
+    sweep_index = 0
+
+    lat = float(radar.latitude["data"][0])
+    lon = float(radar.longitude["data"][0])
+
+    start_idx = int(radar.sweep_start_ray_index["data"][sweep_index])
+    end_idx = int(radar.sweep_end_ray_index["data"][sweep_index]) + 1
+
+    azimuths = radar.azimuth["data"][start_idx:end_idx].tolist()
+
+    range_data = radar.range["data"]
+    first_gate = float(range_data[0])
+    gate_width = (
+        float(range_data[1] - range_data[0]) if len(range_data) > 1 else 250.0
+    )
+    num_gates = int(len(range_data))
+    max_range = float(range_data[-1] + gate_width)
+
+    sweep_data = radar.get_field(sweep_index, field, copy=True)
+
+    del radar
+    gc.collect()
+
+    # HHC categories: 0=ND, 10=BI, 20=GC, 30=IC, 40=DS, 50=WS,
+    # 60=RA, 70=HR, 80=BD, 90=GR, 100=HA, 140=UK, 150=RF
+    vmin, vmax = 0.0, 160.0
+
+    # Quantize to uint8: 0-254 = data, 255 = no data
+    filled = np.ma.filled(sweep_data, np.nan).astype(np.float32)
+    del sweep_data
+    quantized = np.full(filled.shape, 255, dtype=np.uint8)
+    valid = ~np.isnan(filled)
+    if valid.any():
+        normalized = (filled[valid] - vmin) / (vmax - vmin)
+        normalized = np.clip(normalized * 254, 0, 254)
+        quantized[valid] = normalized.astype(np.uint8)
+        del normalized
+    del filled, valid
+    gc.collect()
+
+    data_b64 = base64.b64encode(quantized.tobytes()).decode("ascii")
+
+    result = {
+        "site": site,
+        "key": key,
+        "product": "classification",
+        "latitude": round(lat, 6),
+        "longitude": round(lon, 6),
+        "azimuths": [round(a, 2) for a in azimuths],
+        "firstGateRange": round(first_gate, 1),
+        "gateWidth": round(gate_width, 1),
+        "numGates": num_gates,
+        "numRadials": len(azimuths),
+        "maxRange": round(max_range, 1),
+        "vmin": round(vmin, 2),
+        "vmax": round(vmax, 2),
+        "noDataValue": 255,
+        "data": data_b64,
+    }
+
+    json_bytes = json.dumps(result).encode("utf-8")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(str(output_path), "wb") as f:
+        f.write(json_bytes)
+
+    del quantized
+    gc.collect()
+
+    print(json.dumps({"status": "ok", "product": "classification"}))
+
+
+def _fetch_level3_file(
+    site: str, product_mnemonic: str, timeout: int = 15
+) -> Optional[bytes]:
+    """Fetch the latest Level III product file from the Unidata S3 bucket.
+
+    Returns the raw file bytes, or None if not available.
+    `product_mnemonic` is the 3-char S3 key prefix, e.g. 'N0S', 'N0H'.
     """
-    Fetch the official storm motion vector from the latest N0S (SRM, product 56)
-    Level 3 product on the Unidata S3 bucket.
-
-    Returns (speed_m_s, direction_degrees) or None.
-
-    The storm motion is embedded in the Product Description Block:
-      - dep8 (halfword 50): storm speed in knots × 10
-      - dep9 (halfword 51): storm direction in degrees × 10
-
-    This is the same method AtticRadar uses (PR #12 by @slash2314).
-    """
-    import struct
-
-    # Level 3 S3 keys use 3-letter station codes (drop leading letter)
     station_3 = site[1:].upper() if len(site) == 4 else site.upper()
     now = datetime.now(timezone.utc)
 
     for days_back in range(2):
         d = now - timedelta(days=days_back)
-        prefix = f"{station_3}_N0S_{d.year}_{d.month:02d}_{d.day:02d}"
+        prefix = f"{station_3}_{product_mnemonic}_{d.year}_{d.month:02d}_{d.day:02d}"
         list_url = f"{LEVEL3_S3_BASE}/?prefix={prefix}"
 
         try:
-            req = Request(list_url, headers={"User-Agent": "web-weather-radar/1.0"})
+            req = Request(
+                list_url, headers={"User-Agent": "web-weather-radar/1.0"}
+            )
             with urlopen(req, timeout=timeout) as resp:
                 body = resp.read()
 
@@ -1112,17 +1303,34 @@ def _fetch_storm_motion_from_n0s(site: str, timeout: int = 10):
             latest_key = keys[-1]
             file_url = f"{LEVEL3_S3_BASE}/{latest_key}"
 
-            req = Request(file_url, headers={"User-Agent": "web-weather-radar/1.0"})
+            req = Request(
+                file_url, headers={"User-Agent": "web-weather-radar/1.0"}
+            )
             with urlopen(req, timeout=timeout) as resp:
-                data = resp.read()
-
-            result = _parse_level3_storm_motion(data)
-            if result is not None:
-                return result
+                return resp.read()
         except Exception:
             continue
 
     return None
+
+
+def _fetch_storm_motion_from_n0s(site: str, timeout: int = 10):
+    """
+    Fetch the official storm motion vector from the latest N0S (SRM, product 56)
+    Level 3 product on the Unidata S3 bucket.
+
+    Returns (speed_m_s, direction_degrees) or None.
+
+    The storm motion is embedded in the Product Description Block:
+      - dep8 (halfword 50): storm speed in knots × 10
+      - dep9 (halfword 51): storm direction in degrees × 10
+
+    This is the same method AtticRadar uses (PR #12 by @slash2314).
+    """
+    data = _fetch_level3_file(site, "N0S", timeout=timeout)
+    if data is None:
+        return None
+    return _parse_level3_storm_motion(data)
 
 
 def _parse_level3_storm_motion(data: bytes):
