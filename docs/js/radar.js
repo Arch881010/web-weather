@@ -23,7 +23,7 @@ const DEFAULT_COLORMAPS = {
     velocity: "NWSVel",
     srv: "NWSVel",
     cc: "NWSCC",
-    classification: "Grayscale",
+    classification: "N/A",
 };
 
 const BUILTIN_COLORMAP_OPTIONS = {
@@ -48,7 +48,7 @@ const BUILTIN_COLORMAP_OPTIONS = {
         { value: "Spectral", label: "Spectral" },
     ],
     classification: [
-        { value: "Grayscale", label: "Grayscale (Default)" },
+        { value: "N/A", label: "N/A (Default)" },
     ],
 };
 
@@ -144,23 +144,61 @@ async function importColormapFromFile(product, file) {
                 let cmapData;
 
                 if (isPal) {
-                    // Simple .pal support: lines of "R G B" (0-255). Build an interpolated colormap.
+                    // NWS-style .pal: header lines then "Color: <dBZ> R G B [R2 G2 B2]"
                     const lines = text
                         .split(/\r?\n/)
                         .map((ln) => ln.trim())
                         .filter((ln) => ln && !ln.startsWith("#"));
-                    const colors = lines
-                        .map((ln) => ln.split(/[\s,]+/).map((v) => parseInt(v, 10)))
-                        .filter((arr) => arr.length >= 3 && arr.every((v) => Number.isFinite(v)));
-                    if (!colors.length) {
-                        throw new Error("Invalid .pal file: expected lines of 'R G B'");
+
+                    const colorEntries = [];
+                    for (const ln of lines) {
+                        const match = ln.match(/^Color:\s*(.+)$/i);
+                        if (!match) continue;
+                        const nums = match[1].trim().split(/\s+/).map(Number);
+                        if (nums.length >= 4 && nums.every(Number.isFinite)) {
+                            // Format: dBZ R G B [R2 G2 B2]
+                            // If 7 numbers, two colors bracket this threshold; use the first.
+                            colorEntries.push({
+                                dbz: nums[0],
+                                r: nums[1],
+                                g: nums[2],
+                                b: nums[3],
+                            });
+                        } else if (nums.length === 3 && nums.every(Number.isFinite)) {
+                            // Legacy: just R G B without dBZ — treat index as position
+                            colorEntries.push({
+                                dbz: null,
+                                r: nums[0],
+                                g: nums[1],
+                                b: nums[2],
+                            });
+                        }
                     }
-                    const stops = colors.map((rgb, idx) => {
-                        const t = colors.length === 1 ? 1 : idx / (colors.length - 1);
-                        return [t, rgb[0], rgb[1], rgb[2], 200];
+
+                    if (!colorEntries.length) {
+                        throw new Error("Invalid .pal file: no Color lines found");
+                    }
+
+                    let stops;
+                    const hasDbz = colorEntries.every((e) => e.dbz !== null);
+                    if (hasDbz) {
+                        // Build stepped colormap using dBZ-based thresholds
+                        stops = colorEntries.map((e) => [e.dbz, e.r, e.g, e.b, 200]);
+                    } else {
+                        // No dBZ values — interpolate evenly
+                        stops = colorEntries.map((e, idx) => {
+                            const t = colorEntries.length === 1 ? 1 : idx / (colorEntries.length - 1);
+                            return [t, e.r, e.g, e.b, 200];
+                        });
+                    }
+
+                    // Alpha 0 for fully-black entries (transparent background)
+                    stops.forEach((s) => {
+                        if (s[1] === 0 && s[2] === 0 && s[3] === 0) s[4] = 0;
                     });
+
                     name = file.name.replace(/\.pal$/i, "");
-                    cmapData = { type: "interpolated", stops };
+                    cmapData = { type: hasDbz ? "stepped" : "interpolated", stops };
                 } else {
                     const data = JSON.parse(text);
                     name = data.name || file.name.replace(/\.json$/i, "");
@@ -275,7 +313,7 @@ function radarProductLabel(product) {
         velocity: "Velocity",
         srv: "SRV",
         cc: "CC",
-        classification: "Hydrometer classification",
+        classification: "Hydrometer Classification",
     };
     return labels[normalized] || "Reflectivity";
 }
