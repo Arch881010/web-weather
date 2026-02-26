@@ -21,6 +21,7 @@ const default_config = {
 		base: "https://radar.arch1010.dev",
 		imagePath: "/api/radar/image",
 		product: "reflectivity",
+		level: 2,
 		cmap: "NWSRef",
 		colormaps: {},
 		pollIntervalMs: 60000,
@@ -75,6 +76,15 @@ const loadSettings = () => {
 		savedSettings.radarApi.mode || "wms";
 	document.getElementById("radar-site").value =
 		(savedSettings.radarApi.site || "KLZK").toUpperCase();
+	document.getElementById("radar-data-level").value =
+		String(savedSettings.radarApi.level || 2);
+
+	// Populate product dropdown based on current level, then select saved product
+	if (typeof syncProductDropdownsToLevel === "function") {
+		// Temporarily set config.radarApi so getRadarLevel() works
+		config.radarApi = { ...default_config.radarApi, ...savedSettings.radarApi };
+		syncProductDropdownsToLevel();
+	}
 	document.getElementById("radar-site-product").value =
 		savedSettings.radarApi.product || "reflectivity";
 
@@ -127,6 +137,8 @@ const saveSettings = () => {
 	const radarSiteProduct =
 		document.getElementById("radar-site-product").value ||
 		"reflectivity";
+	const radarDataLevel =
+		parseInt(document.getElementById("radar-data-level").value, 10) || 2;
 	const radarCmap = document.getElementById("radar-cmap").value || "NWSRef";
 
 	// Update config object
@@ -139,6 +151,7 @@ const saveSettings = () => {
 	config.radarApi.mode = radarMode;
 	config.radarApi.site = radarSite;
 	config.radarApi.product = radarSiteProduct;
+	config.radarApi.level = radarDataLevel;
 	config.radarApi.cmap = radarCmap;
 
 	// Radar hover tooltip preference

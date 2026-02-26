@@ -167,13 +167,16 @@
 								placeholder="KLZK" />
 						</div>
 						<div class="setting-item">
+							<label for="radar-data-level">Data Level</label>
+							<select id="radar-data-level">
+								<option value="2" selected>Basic-Resolution</option>
+								<option value="3">Super-Resolution</option>
+							</select>
+						</div>
+						<div class="setting-item">
 							<label for="radar-site-product">Site Product</label>
 							<select id="radar-site-product">
-								<option value="reflectivity" selected>Reflectivity</option>
-								<option value="velocity">Velocity</option>
-								<option value="srv">SRV</option>
-								<option value="cc">CC</option>
-								<option value="classification">Classification</option>
+								<!-- Populated dynamically based on data level -->
 							</select>
 						</div>
 						<div class="setting-item">

@@ -35,6 +35,23 @@ class RadarCacheEntry:
 
 
 class RadarCacheManager:
+    # Level III product → NWS S3 mnemonic (Unidata bucket)
+    # Only classification actually uses Level III — reflectivity, velocity,
+    # and SRV always use Level II for maximum resolution (720 radials, 250m gates).
+    LEVEL3_PRODUCT_MNEMONICS = {
+        "classification": "N0H", # Hydrometeor Classification
+    }
+
+    # Products that are ALWAYS Level III regardless of toggle
+    LEVEL3_ONLY_PRODUCTS = {"classification"}
+
+    @staticmethod
+    def _is_level3_request(product: str, level: Optional[int] = None) -> bool:
+        """Return True when this request should use Level III data.
+        Only classification goes through Level III — all other products
+        use Level II for best resolution."""
+        return product in RadarCacheManager.LEVEL3_ONLY_PRODUCTS
+
     def __init__(
         self,
         cache_dir: Path,
@@ -129,14 +146,15 @@ class RadarCacheManager:
         return self.cache_dir / f"{site}_{key_name}_sweep_{safe_product}.json.gz"
 
     def get_or_extract_sweep(
-        self, site: str, product_name: Optional[str] = None, force: bool = False
+        self, site: str, product_name: Optional[str] = None,
+        force: bool = False, level: Optional[int] = None
     ) -> Path:
         site = self._normalize_site(site)
         resolved_product = self._resolve_product_name(product_name)
 
-        # Classification uses Level III (N0H) — separate flow avoids Level II download
-        if resolved_product == "classification":
-            return self._get_or_extract_classification(site, force=force)
+        # Level III products — separate flow avoids Level II download
+        if self._is_level3_request(resolved_product, level):
+            return self._get_or_extract_level3_product(site, resolved_product, force=force)
 
         cache_entry = self.get_or_refresh(site, force=force)
         key_name = Path(cache_entry.key).name
@@ -157,14 +175,21 @@ class RadarCacheManager:
 
     def _get_or_extract_classification(self, site: str, force: bool = False) -> Path:
         """Handle classification via Level III N0H — avoids downloading Level II."""
-        l3_path, l3_key = self._get_or_refresh_level3(site, "N0H", force=force)
-        sweep_path = self._sweep_cache_path(site, l3_key, "classification")
+        return self._get_or_extract_level3_product(site, "classification", force=force)
+
+    def _get_or_extract_level3_product(self, site: str, product: str, force: bool = False) -> Path:
+        """Handle any Level III product — avoids downloading Level II."""
+        mnemonic = self.LEVEL3_PRODUCT_MNEMONICS.get(product)
+        if not mnemonic:
+            raise ValueError(f"No Level III mnemonic for product: {product}")
+        l3_path, l3_key = self._get_or_refresh_level3(site, mnemonic, force=force)
+        sweep_path = self._sweep_cache_path(site, l3_key, product)
 
         if sweep_path.exists() and not force:
             return sweep_path
 
         self._extract_sweep_via_subprocess(
-            l3_path, sweep_path, "classification", site, l3_key
+            l3_path, sweep_path, product, site, l3_key, level=3
         )
         return sweep_path
 
@@ -219,12 +244,12 @@ class RadarCacheManager:
         product_name: str,
         site: str,
         key: str = "",
+        level: Optional[int] = None,
     ) -> None:
         """Extract sweep data in a child process so all memory is reclaimed.
         Uses a semaphore to ensure only one extraction runs at a time (OOM prevention).
         Retries once on OOM-kill (exit -9)."""
-        task = json.dumps(
-            {
+        task_dict = {
                 "local_path": str(local_path),
                 "output_path": str(output_path),
                 "product_name": product_name,
@@ -232,7 +257,9 @@ class RadarCacheManager:
                 "key": key,
                 "enable_srv_dealias": self.enable_srv_dealias,
             }
-        )
+        if level is not None:
+            task_dict["level"] = level
+        task = json.dumps(task_dict)
         max_attempts = 2
         for attempt in range(1, max_attempts + 1):
             acquired = self._extract_semaphore.acquire(timeout=300)
@@ -356,7 +383,7 @@ class RadarCacheManager:
 
         latest_key, object_url = self._find_latest_key(site)
         if not latest_key or not object_url:
-            raise RuntimeError(f"No Level 2 files found for site {site}")
+            raise RuntimeError(f"No Basic-Resolution files found for site {site}")
 
         now = self._utcnow()
         next_poll = now + timedelta(seconds=self.poll_interval_seconds)
@@ -481,6 +508,13 @@ class RadarCacheManager:
 
     @staticmethod
     def _pick_sweep_for_field(radar, field: str, np) -> int:
+        """Pick the best sweep for *field*: prefer the lowest-elevation cut
+        that has the highest number of radials (finest azimuthal resolution).
+
+        NEXRAD Level II files contain both super-resolution (720 radials,
+        0.5° spacing) and legacy (360 radials, 1° spacing) cuts at the same
+        elevation.  We want the super-res cut when available.
+        """
         try:
             total_sweeps = int(getattr(radar, "nsweeps", 0) or 0)
         except Exception:
@@ -489,26 +523,45 @@ class RadarCacheManager:
         if total_sweeps <= 1:
             return 0
 
-        fallback = 0
-        for sweep_index in range(total_sweeps):
+        # Gather viable sweeps: those that contain *field* with actual data
+        viable = []  # list of (sweep_index, n_radials, elevation)
+        for si in range(total_sweeps):
             try:
-                sweep_data = radar.get_field(sweep_index, field, copy=False)
+                sweep_data = radar.get_field(si, field, copy=False)
             except Exception:
                 continue
-
             if sweep_data is None:
                 continue
-
             try:
-                if np.ma.count(sweep_data) > 0:
-                    return sweep_index
+                count = int(np.ma.count(sweep_data))
             except Exception:
-                if getattr(sweep_data, "size", 0):
-                    return sweep_index
+                count = getattr(sweep_data, "size", 0) or 0
+            if count == 0:
+                continue
+            # Number of radials in this sweep
+            s_start = int(radar.sweep_start_ray_index["data"][si])
+            s_end = int(radar.sweep_end_ray_index["data"][si]) + 1
+            n_radials = s_end - s_start
+            # Elevation angle (lower = closer to ground)
+            try:
+                elev = float(radar.fixed_angle["data"][si])
+            except Exception:
+                elev = float(si)
+            viable.append((si, n_radials, elev))
 
-            fallback = sweep_index
+        if not viable:
+            return 0
 
-        return fallback
+        # Sort by: lowest elevation first, then most radials (descending)
+        viable.sort(key=lambda x: (round(x[2], 1), -x[1]))
+        best = viable[0]
+        print(
+            f"[radar] Sweep selection: chose sweep {best[0]} "
+            f"({best[1]} radials, {best[2]:.1f}° elev) "
+            f"from {len(viable)} viable sweeps",
+            file=sys.stderr,
+        )
+        return best[0]
 
     @staticmethod
     def _estimate_environmental_wind_component(
@@ -807,10 +860,12 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
                 site = self._require_site(query)
                 force = self._is_true(query.get("force", ["0"])[0])
                 product_name = self._get_optional_product(query)
+                level = self._get_optional_level(query)
                 sweep_path = manager.get_or_extract_sweep(
                     site,
                     product_name=product_name,
                     force=force,
+                    level=level,
                 )
                 payload = sweep_path.read_bytes()  # already gzipped
 
@@ -883,6 +938,17 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
             return None
         return values[0]
 
+    @staticmethod
+    def _get_optional_level(query: dict) -> Optional[int]:
+        values = query.get("level", [])
+        if not values:
+            return None
+        try:
+            lvl = int(values[0])
+            return lvl if lvl in (2, 3) else None
+        except (ValueError, TypeError):
+            return None
+
     def _get_manager(self) -> RadarCacheManager:
         if self.manager is None:
             raise RuntimeError("Radar cache manager is not initialized")
@@ -893,7 +959,7 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
 
 
 def _extract_sweep_task(task: dict) -> None:
-    """Subprocess: extract sweep data from a Level 2 file, write gzipped JSON.
+    """Subprocess: extract sweep data from a Basic-Resolution file, write gzipped JSON.
     Memory-optimized: frees the full radar object as soon as sweep data is extracted."""
     import gc
     np = importlib.import_module("numpy")
@@ -910,9 +976,10 @@ def _extract_sweep_task(task: dict) -> None:
     # read_nexrad_archive supports `exclude_fields` to reduce memory.
     _product = RadarCacheManager._resolve_product_name(product_name)
 
-    # Classification is a Level III product (N0H/HHC) — fetch separately
-    if _product == "classification":
-        _extract_classification_from_level3(task)
+    # Level III products — use generic L3 extraction
+    _level = task.get("level")
+    if RadarCacheManager._is_level3_request(_product, _level):
+        _extract_level3_sweep(task, _product)
         return
 
     _desired_fields = _get_desired_fields_for_product(_product)
@@ -952,10 +1019,27 @@ def _extract_sweep_task(task: dict) -> None:
     gate_width = (
         float(range_data[1] - range_data[0]) if len(range_data) > 1 else 250.0
     )
+
+    sweep_data = radar.get_field(sweep_index, field, copy=True)
+
+    # Trim trailing all-masked gates to reduce payload size
+    # (super-res range array can extend beyond actual data coverage)
+    if hasattr(sweep_data, "mask") and sweep_data.ndim == 2:
+        has_data_per_gate = ~np.all(np.ma.getmaskarray(sweep_data), axis=0)
+        if has_data_per_gate.any():
+            last_valid = int(np.max(np.where(has_data_per_gate)[0])) + 1
+            if last_valid < sweep_data.shape[1]:
+                sweep_data = sweep_data[:, :last_valid]
+                range_data = range_data[:last_valid]
+
     num_gates = int(len(range_data))
     max_range = float(range_data[-1] + gate_width)
 
-    sweep_data = radar.get_field(sweep_index, field, copy=True)
+    print(
+        f"[radar] L2 extract: {len(azimuths)} radials x {num_gates} gates, "
+        f"gate_width={gate_width:.0f}m, max_range={max_range/1000:.0f}km",
+        file=sys.stderr,
+    )
 
     # ── Product-specific processing ──
     vmin, vmax = -20.0, 80.0
@@ -1077,6 +1161,21 @@ def _extract_sweep_task(task: dict) -> None:
     elif effective_product == "classification":
         vmin, vmax = 0.0, 20.0
 
+    # Extract scan time from radar time metadata before freeing the object
+    scan_time_iso = None
+    try:
+        time_units = radar.time["units"]  # e.g. "seconds since 2026-02-25T00:00:00Z"
+        m = re.match(r"seconds since (.+)", time_units)
+        if m:
+            base_str = m.group(1).replace("Z", "+00:00")
+            base_time = datetime.fromisoformat(base_str)
+            time_offsets = radar.time["data"][start_idx:end_idx]
+            median_offset = float(np.median(time_offsets))
+            scan_dt = base_time + timedelta(seconds=median_offset)
+            scan_time_iso = scan_dt.isoformat()
+    except Exception as e:
+        print(f"[radar] Could not extract scan time: {e}", file=sys.stderr)
+
     del radar
     gc.collect()
 
@@ -1135,6 +1234,8 @@ def _extract_sweep_task(task: dict) -> None:
         "noDataValue": 255,
         "data": data_b64,
     }
+    if scan_time_iso:
+        result["scanTime"] = scan_time_iso
 
     json_bytes = json.dumps(result).encode("utf-8")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1147,9 +1248,10 @@ def _extract_sweep_task(task: dict) -> None:
     print(json.dumps({"status": "ok", "product": effective_product}))
 
 
-def _extract_classification_from_level3(task: dict) -> None:
-    """Extract classification data from a locally-cached Level III N0H file.
+def _extract_level3_sweep(task: dict, product: str) -> None:
+    """Extract sweep data from a locally-cached Level III file.
 
+    Handles all Level III products (N0B, N0G, N0S, N0H).
     The main process downloads and caches the Level III file, passing its
     path via task['local_path'] so this subprocess avoids network I/O."""
     import gc
@@ -1164,16 +1266,33 @@ def _extract_classification_from_level3(task: dict) -> None:
 
     radar = pyart.io.read_nexrad_level3(str(local_path))
 
-    # Find classification field — pyart names it based on product code
+    # ── Field detection by product type ──
+    field_candidates = {
+        "reflectivity": [
+            "reflectivity", "DBZ", "REF", "base_reflectivity",
+            "corrected_reflectivity",
+        ],
+        "velocity": [
+            "velocity", "VEL", "base_velocity", "radial_velocity",
+            "corrected_velocity",
+        ],
+        "srv": [
+            "storm_relative_velocity", "SRV", "SRM",
+            "storm_relative_mean_radial_velocity",
+        ],
+        "cc": [
+            "cross_correlation_ratio", "RHOHV", "CC",
+            "correlation_coefficient",
+        ],
+        "classification": [
+            "radar_echo_classification", "hydrometeor_classification",
+            "classification", "HCLASS", "EC",
+        ],
+    }
+    candidates = field_candidates.get(product, [])
+
     field = None
-    class_candidates = [
-        "radar_echo_classification",
-        "hydrometeor_classification",
-        "classification",
-        "HCLASS",
-        "EC",
-    ]
-    for candidate in class_candidates:
+    for candidate in candidates:
         if candidate in radar.fields:
             field = candidate
             break
@@ -1184,13 +1303,13 @@ def _extract_classification_from_level3(task: dict) -> None:
         if available:
             field = available[0]
             print(
-                f"[radar] classification: using field '{field}' from Level III "
+                f"[radar] L3 {product}: using field '{field}' "
                 f"(available: {available})",
                 file=sys.stderr,
             )
         else:
             raise RuntimeError(
-                "No fields found in Level III classification product"
+                f"No fields found in Level III {product} product"
             )
 
     # Level III products typically have a single sweep
@@ -1214,12 +1333,36 @@ def _extract_classification_from_level3(task: dict) -> None:
 
     sweep_data = radar.get_field(sweep_index, field, copy=True)
 
+    # Extract scan time from Level III radar time metadata
+    scan_time_iso = None
+    try:
+        time_units = radar.time["units"]
+        m = re.match(r"seconds since (.+)", time_units)
+        if m:
+            base_str = m.group(1).replace("Z", "+00:00")
+            base_time = datetime.fromisoformat(base_str)
+            time_offsets = radar.time["data"][start_idx:end_idx]
+            median_offset = float(np.median(time_offsets))
+            scan_dt = base_time + timedelta(seconds=median_offset)
+            scan_time_iso = scan_dt.isoformat()
+    except Exception as e:
+        print(f"[radar] Could not extract L3 scan time: {e}", file=sys.stderr)
+
     del radar
     gc.collect()
 
-    # HHC categories: 0=ND, 10=BI, 20=GC, 30=IC, 40=DS, 50=WS,
-    # 60=RA, 70=HR, 80=BD, 90=GR, 100=HA, 140=UK, 150=RF
-    vmin, vmax = 0.0, 160.0
+    # ── Product-specific vmin/vmax and masking ──
+    if product == "classification":
+        vmin, vmax = 0.0, 160.0  # HHC categories 0..150
+    elif product == "reflectivity":
+        vmin, vmax = -20.0, 80.0
+        sweep_data = np.ma.masked_less(sweep_data, 5.0)
+    elif product in ("velocity", "srv"):
+        vmin, vmax = -80.0, 80.0
+    elif product == "cc":
+        vmin, vmax = 0.2, 1.05
+    else:
+        vmin, vmax = -20.0, 80.0
 
     # Quantize to uint8: 0-254 = data, 255 = no data
     filled = np.ma.filled(sweep_data, np.nan).astype(np.float32)
@@ -1239,7 +1382,7 @@ def _extract_classification_from_level3(task: dict) -> None:
     result = {
         "site": site,
         "key": key,
-        "product": "classification",
+        "product": product,
         "latitude": round(lat, 6),
         "longitude": round(lon, 6),
         "azimuths": [round(a, 2) for a in azimuths],
@@ -1253,6 +1396,8 @@ def _extract_classification_from_level3(task: dict) -> None:
         "noDataValue": 255,
         "data": data_b64,
     }
+    if scan_time_iso:
+        result["scanTime"] = scan_time_iso
 
     json_bytes = json.dumps(result).encode("utf-8")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1262,7 +1407,7 @@ def _extract_classification_from_level3(task: dict) -> None:
     del quantized
     gc.collect()
 
-    print(json.dumps({"status": "ok", "product": "classification"}))
+    print(json.dumps({"status": "ok", "product": product}))
 
 
 def _fetch_level3_file(
@@ -1442,7 +1587,7 @@ def _all_nexrad_fields() -> set:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Local cached NEXRAD Level 2 polling API"
+        description="Local cached NEXRAD Basic-Resolution polling API"
     )
     parser.add_argument("--host", default="127.0.0.1", help="HTTP bind host")
     parser.add_argument(
@@ -1477,7 +1622,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-
+ 
     if args.render_task:
         task = json.loads(args.render_task)
         _extract_sweep_task(task)
@@ -1504,7 +1649,7 @@ def main() -> None:
     print(f"[radar] API listening on http://{args.host}:{args.port}")
     print(
         "[radar] endpoints: /health, /api/radar/status, "
-        "/api/radar/latest?site=KLZK, /api/radar/sweep?site=KLZK"
+        "/api/radar/latest?site=KLZK, /api/radar/sweep?site=KLZK&product=reflectivity&level=2"
     )
 
     try:

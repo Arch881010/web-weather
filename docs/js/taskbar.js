@@ -83,6 +83,24 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
+	// ── Data Level: update product dropdown when level changes ──
+	const dataLevelSelect = document.getElementById("radar-data-level");
+	if (dataLevelSelect) {
+		dataLevelSelect.addEventListener("change", () => {
+			const newLevel = parseInt(dataLevelSelect.value, 10) || 2;
+			if (!config.radarApi) config.radarApi = {};
+			config.radarApi.level = newLevel;
+			localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+			if (typeof syncProductDropdownsToLevel === "function") {
+				syncProductDropdownsToLevel();
+			}
+			// Update colormap dropdown for the (possibly changed) product
+			if (typeof updateColormapDropdown === "function") {
+				updateColormapDropdown(config.radarApi.product || "reflectivity");
+			}
+		});
+	}
+
 	// ── Colormap: upload custom colormap ──
 	const uploadCmapBtn = document.getElementById("upload-cmap-btn");
 	const cmapFileInput = document.getElementById("cmap-file-input");

@@ -80,6 +80,11 @@ function saveCustomColormaps() {
     }
 }
 
+/** Get the configured data level (2 or 3) */
+function getRadarLevel() {
+    return config.radarApi?.level || 2;
+}
+
 function getColormapForProduct(product) {
     const normalized = normalizeRadarProduct(product);
     if (config.radarApi?.colormaps && config.radarApi.colormaps[normalized]) {
@@ -144,20 +149,39 @@ async function importColormapFromFile(product, file) {
                 let cmapData;
 
                 if (isPal) {
-                    // NWS-style .pal: header lines then "Color: <dBZ> R G B [R2 G2 B2]"
+                    // NWS-style .pal: header lines then "Color: <value> R G B [R2 G2 B2]"
+                    // Velocity .pal files have "Scale:" and/or "Product: BV" headers
+                    // with thresholds in knots; we convert to normalized -1..1 stops.
                     const lines = text
                         .split(/\r?\n/)
                         .map((ln) => ln.trim())
                         .filter((ln) => ln && !ln.startsWith("#"));
 
-                    const colorEntries = [];
+                    // Parse header metadata
+                    let scale = null;   // e.g. 1.942 for knots
+                    let palProduct = null;
                     for (const ln of lines) {
+                        const scaleMatch = ln.match(/^Scale:\s*([\d.]+)/i);
+                        if (scaleMatch) scale = parseFloat(scaleMatch[1]);
+                        const prodMatch = ln.match(/^Product:\s*(\S+)/i);
+                        if (prodMatch) palProduct = prodMatch[1].toUpperCase();
+                    }
+
+                    const isVelocityPal = scale != null || (palProduct && /^(BV|SRV|SRM|VEL|V)$/i.test(palProduct));
+
+                    const colorEntries = [];
+                    let rfColor = null;
+                    for (const ln of lines) {
+                        // Range-folded color
+                        const rfMatch = ln.match(/^RF:\s*(\d+)\s+(\d+)\s+(\d+)/i);
+                        if (rfMatch) {
+                            rfColor = [+rfMatch[1], +rfMatch[2], +rfMatch[3]];
+                            continue;
+                        }
                         const match = ln.match(/^Color:\s*(.+)$/i);
                         if (!match) continue;
                         const nums = match[1].trim().split(/\s+/).map(Number);
                         if (nums.length >= 4 && nums.every(Number.isFinite)) {
-                            // Format: dBZ R G B [R2 G2 B2]
-                            // If 7 numbers, two colors bracket this threshold; use the first.
                             colorEntries.push({
                                 dbz: nums[0],
                                 r: nums[1],
@@ -165,7 +189,6 @@ async function importColormapFromFile(product, file) {
                                 b: nums[3],
                             });
                         } else if (nums.length === 3 && nums.every(Number.isFinite)) {
-                            // Legacy: just R G B without dBZ — treat index as position
                             colorEntries.push({
                                 dbz: null,
                                 r: nums[0],
@@ -180,25 +203,45 @@ async function importColormapFromFile(product, file) {
                     }
 
                     let stops;
+                    let cmapType;
                     const hasDbz = colorEntries.every((e) => e.dbz !== null);
-                    if (hasDbz) {
-                        // Build stepped colormap using dBZ-based thresholds
+
+                    if (isVelocityPal && hasDbz) {
+                        // Velocity .pal: thresholds are in display units (e.g. knots).
+                        // Find the symmetric max value to normalize to -1..1.
+                        const absMax = Math.max(
+                            ...colorEntries.map((e) => Math.abs(e.dbz))
+                        );
+                        const normMax = absMax || 150;
+                        // Sort from most-negative to most-positive
+                        colorEntries.sort((a, b) => a.dbz - b.dbz);
+                        stops = colorEntries.map((e) => [
+                            e.dbz / normMax,  // normalized -1..1
+                            e.r, e.g, e.b,
+                        ]);
+                        cmapType = "velocity";
+                    } else if (hasDbz) {
+                        // Reflectivity-style stepped colormap
                         stops = colorEntries.map((e) => [e.dbz, e.r, e.g, e.b, 200]);
+                        cmapType = "stepped";
                     } else {
-                        // No dBZ values — interpolate evenly
+                        // No thresholds — interpolate evenly
                         stops = colorEntries.map((e, idx) => {
                             const t = colorEntries.length === 1 ? 1 : idx / (colorEntries.length - 1);
                             return [t, e.r, e.g, e.b, 200];
                         });
+                        cmapType = "interpolated";
                     }
 
                     // Alpha 0 for fully-black entries (transparent background)
-                    stops.forEach((s) => {
-                        if (s[1] === 0 && s[2] === 0 && s[3] === 0) s[4] = 0;
-                    });
+                    if (cmapType !== "velocity") {
+                        stops.forEach((s) => {
+                            if (s[1] === 0 && s[2] === 0 && s[3] === 0) s[4] = 0;
+                        });
+                    }
 
                     name = file.name.replace(/\.pal$/i, "");
-                    cmapData = { type: hasDbz ? "stepped" : "interpolated", stops };
+                    cmapData = { type: cmapType, stops };
                 } else {
                     const data = JSON.parse(text);
                     name = data.name || file.name.replace(/\.json$/i, "");
@@ -280,10 +323,120 @@ function setRadarSiteStatus(message) {
     status.textContent = message || "";
 }
 
-function setBottomRadarStatus(message) {
+function setBottomRadarStatus(message, isHTML = false) {
     const status = document.getElementById("radar-runtime-status");
     if (!status) return;
-    status.textContent = message || "";
+    if (isHTML) {
+        status.innerHTML = message || "";
+    } else {
+        status.textContent = message || "";
+    }
+}
+
+/** Format the scan time from sweepData (ISO string) as a user-friendly local time */
+function _formatScanTime(sweepData) {
+    if (sweepData && sweepData.scanTime) {
+        try {
+            return new Date(sweepData.scanTime).toLocaleTimeString();
+        } catch (_) {}
+    }
+    return new Date().toLocaleTimeString();
+}
+
+/** Per-level product lists */
+const LEVEL2_PRODUCTS = [
+    { value: "reflectivity", label: "Reflectivity" },
+    { value: "velocity", label: "Velocity" },
+];
+
+const SUPERRES_PRODUCTS = [
+    { value: "reflectivity", label: "Reflectivity" },
+    { value: "velocity", label: "Velocity" },
+    { value: "srv", label: "SRV" },
+    { value: "classification", label: "Classification" },
+];
+
+/** Get the product list for the current data level */
+function getProductsForLevel(level) {
+    return level === 3 ? SUPERRES_PRODUCTS : LEVEL2_PRODUCTS;
+}
+
+/** Update all product dropdowns (settings + status bar) for the current level.
+ *  If the current product is not in the new level's list, reset to reflectivity. */
+function syncProductDropdownsToLevel() {
+    const level = getRadarLevel();
+    const products = getProductsForLevel(level);
+    const currentProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
+
+    // If current product not available at new level, fallback
+    const validValues = new Set(products.map(p => p.value));
+    if (!validValues.has(currentProduct)) {
+        config.radarApi.product = "reflectivity";
+        localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+    }
+
+    // Update settings panel dropdown
+    const settingsSelect = document.getElementById("radar-site-product");
+    if (settingsSelect) {
+        const selected = config.radarApi?.product || "reflectivity";
+        settingsSelect.innerHTML = "";
+        products.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.value;
+            opt.textContent = p.label;
+            if (p.value === selected) opt.selected = true;
+            settingsSelect.appendChild(opt);
+        });
+    }
+
+    // Update status-bar dropdown if present
+    const statusSelect = document.getElementById("status-product-switch");
+    if (statusSelect) {
+        const selected = config.radarApi?.product || "reflectivity";
+        statusSelect.innerHTML = "";
+        products.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.value;
+            opt.textContent = p.label;
+            if (p.value === selected) opt.selected = true;
+            statusSelect.appendChild(opt);
+        });
+    }
+}
+
+/** Build the rich radar status HTML with a product dropdown */
+function _buildRadarStatusHTML(scanTimeStr, product, site) {
+    const level = getRadarLevel();
+    const levelLabel = level === 3 ? "SR" : "BR";
+    const levelTitle = level === 3 ? "Super-Resolution" : "Basic-Resolution";
+    const levelTag = `<span class="status-level-badge" title="${levelTitle}">${levelLabel}</span>`;
+    const products = getProductsForLevel(level);
+    const options = products.map((p) => {
+        const sel = p.value === product ? " selected" : "";
+        return `<option value="${p.value}"${sel}>${p.label}</option>`;
+    }).join("");
+    return (
+        `Radar: ${scanTimeStr} | ` +
+        `<select id="status-product-switch" title="Switch radar product">${options}</select>` +
+        ` ${levelTag} | ${site}`
+    );
+}
+
+/** Attach the change listener to the status-bar product dropdown */
+function _bindStatusProductSwitch() {
+    const sel = document.getElementById("status-product-switch");
+    if (!sel) return;
+    sel.addEventListener("change", (e) => {
+        const newProduct = e.target.value;
+        if (!config.radarApi) config.radarApi = {};
+        config.radarApi.product = newProduct;
+        localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+        // Also sync the settings-panel product select
+        const settingsSelect = document.getElementById("radar-site-product");
+        if (settingsSelect) settingsSelect.value = newProduct;
+        // Trigger a radar reload
+        updateRadarLayer();
+    });
 }
 
 function normalizeRadarProduct(product) {
@@ -302,6 +455,7 @@ function normalizeRadarProduct(product) {
         "cc": "cc",
         "classification": "classification",
         "class": "classification",
+        "reflectivity_l3": "reflectivity",
     };
     return aliases[value] || "reflectivity";
 }
@@ -378,7 +532,8 @@ async function fetchSweepData(site, force = false, signal = null) {
     const radarApi = getRadarApiConfig();
     const base = radarApi.base;
     const product = normalizeRadarProduct(radarApi.product || "reflectivity");
-    const cacheKey = `${site.toUpperCase()}:${product}`;
+    const level = getRadarLevel();
+    const cacheKey = `${site.toUpperCase()}:${product}:L${level}`;
 
     // Check browser-side cache (skip if force refresh)
     if (!force) {
@@ -392,6 +547,7 @@ async function fetchSweepData(site, force = false, signal = null) {
     const url = new URL(`${base}/api/radar/sweep`);
     url.searchParams.set("site", site.toUpperCase());
     if (product) url.searchParams.set("product", product);
+    if (level) url.searchParams.set("level", String(level));
     if (force) url.searchParams.set("force", "1");
     const fetchOpts = signal ? { signal } : {};
     const response = await fetch(url.toString(), fetchOpts);
@@ -494,8 +650,10 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
             updateSelectedRadarLabel(resolvedSite);
             setRadarSitePreference(resolvedSite, true);
             setBottomRadarStatus(
-                `Radar Status: Last Updated ${new Date().toLocaleTimeString()} | Type: ${radarProductLabel(resolvedProduct)} | Site: ${resolvedSite}`
+                _buildRadarStatusHTML(_formatScanTime(sweepData), resolvedProduct, resolvedSite),
+                true
             );
+            _bindStatusProductSwitch();
             return true;
         }
 
@@ -509,8 +667,10 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         setRadarLayerFromSweep(sweepData, config.opacity.radar);
         setRadarSitePreference(resolvedSite, true);
         setBottomRadarStatus(
-            `Radar Status: Last Updated ${new Date().toLocaleTimeString()} | Type: ${radarProductLabel(resolvedProduct)} | Site: ${resolvedSite}`
+            _buildRadarStatusHTML(_formatScanTime(sweepData), resolvedProduct, resolvedSite),
+            true
         );
+        _bindStatusProductSwitch();
         return true;
     } catch (error) {
         // If aborted (user switched site), silently ignore

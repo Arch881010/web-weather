@@ -445,7 +445,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
         options = L.Util.extend({
             bounds: coverageBounds,
             minZoom: 3,
-            maxZoom: 15,
+            maxZoom: 18,
             tileSize: 256,
             updateWhenZooming: false,
             updateWhenIdle: true,
@@ -492,10 +492,11 @@ const RadarCanvasLayer = L.GridLayer.extend({
             return { product: "classification", code: cls.code, label: cls.label, rgba: cls.rgba };
         }
 
+        const baseProd = this._sweepData.product;
         let units = "";
-        if (this._sweepData.product === "reflectivity") units = "dBZ";
-        else if (this._sweepData.product === "velocity" || this._sweepData.product === "srv") units = "m/s";
-        else if (this._sweepData.product === "cc") units = "ρHV";
+        if (baseProd === "reflectivity") units = "dBZ";
+        else if (baseProd === "velocity" || baseProd === "srv") units = "m/s";
+        else if (baseProd === "cc") units = "ρHV";
 
         return { product: this._sweepData.product, value: physical, units };
     },
@@ -545,7 +546,6 @@ const RadarCanvasLayer = L.GridLayer.extend({
 
         const radarLat = this._radarLat;
         const radarLon = this._radarLon;
-        const cosLat = this._cosRadarLat;
         const firstRange = this._firstGateRange;
         const gateWidth = this._gateWidth;
         const numGates = this._numGates;
@@ -561,6 +561,10 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const invAzStep = 1 / azStep;
         const RAD_TO_DEG = 180 / Math.PI;
 
+        // Use nearest-neighbor for classification (categorical data),
+        // bilinear interpolation for all other products
+        const useInterp = false;
+
         for (let py = 0; py < TILE; py++) {
             const lat = north - (py + 0.5) * latStep;
             const dy = (lat - radarLat) * metersPerDegLat;
@@ -575,20 +579,58 @@ const RadarCanvasLayer = L.GridLayer.extend({
                 const range = Math.sqrt(rangeSq);
                 if (range >= maxRangeM) continue;
 
-                // Gate index (nearest neighbor)
-                const gateIdx = ((range - firstRange) * invGateWidth) | 0;
-                if (gateIdx >= numGates) continue;
-
                 // Azimuth from north, clockwise
                 let azimuth = Math.atan2(dx, dy) * RAD_TO_DEG;
                 if (azimuth < 0) azimuth += 360;
 
-                // Nearest azimuth index
-                let azIdx = Math.round(((azimuth - azOffset + 360) % 360) * invAzStep) % numRadials;
-                if (azIdx < 0) azIdx += numRadials;
+                // Fractional gate and azimuth indices
+                const gateF = (range - firstRange) * invGateWidth;
+                const azF = ((azimuth - azOffset + 360) % 360) * invAzStep;
 
-                const val = gateData[azIdx * numGates + gateIdx];
-                if (val === noData) continue;
+                let val;
+
+                if (useInterp) {
+                    // ── Bilinear interpolation for smooth rendering ──
+                    const g0 = Math.floor(gateF);
+                    if (g0 < 0 || g0 >= numGates) continue;
+                    const g1 = Math.min(g0 + 1, numGates - 1);
+                    const gf = gateF - g0;
+
+                    const a0 = ((Math.floor(azF) % numRadials) + numRadials) % numRadials;
+                    const a1 = (a0 + 1) % numRadials;
+                    const af = azF - Math.floor(azF);
+
+                    const v00 = gateData[a0 * numGates + g0];
+                    const v01 = gateData[a0 * numGates + g1];
+                    const v10 = gateData[a1 * numGates + g0];
+                    const v11 = gateData[a1 * numGates + g1];
+
+                    // Skip if all samples are no-data
+                    if (v00 === noData && v01 === noData && v10 === noData && v11 === noData) continue;
+
+                    // Weighted interpolation, skipping no-data samples
+                    const w00 = (1 - gf) * (1 - af);
+                    const w01 = gf * (1 - af);
+                    const w10 = (1 - gf) * af;
+                    const w11 = gf * af;
+
+                    let sum = 0, wt = 0;
+                    if (v00 !== noData) { sum += v00 * w00; wt += w00; }
+                    if (v01 !== noData) { sum += v01 * w01; wt += w01; }
+                    if (v10 !== noData) { sum += v10 * w10; wt += w10; }
+                    if (v11 !== noData) { sum += v11 * w11; wt += w11; }
+
+                    if (wt < 0.01) continue;
+                    val = Math.round(sum / wt);
+                } else {
+                    // ── Nearest-neighbor for classification (categorical) ──
+                    const gateIdx = gateF | 0;
+                    if (gateIdx >= numGates) continue;
+                    let azIdx = Math.round(azF) % numRadials;
+                    if (azIdx < 0) azIdx += numRadials;
+                    val = gateData[azIdx * numGates + gateIdx];
+                    if (val === noData) continue;
+                }
 
                 const ci = val << 2;
                 const r = colorLUT[ci];
@@ -759,15 +801,16 @@ function _colorbarMouseMove(e) {
     const tooltip = document.getElementById("colorbar-tooltip");
     if (!tooltip) return;
 
+    const baseProd = _colorbarProduct;
     let text;
-    if (_colorbarProduct === "velocity" || _colorbarProduct === "srv") {
+    if (baseProd === "velocity" || baseProd === "srv") {
         const mph = val * 2.23694;
         text = `${val.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
-    } else if (_colorbarProduct === "cc") {
+    } else if (baseProd === "cc") {
         text = `\u03C1HV: ${val.toFixed(3)}`;
-    } else if (_colorbarProduct === "reflectivity") {
+    } else if (baseProd === "reflectivity") {
         text = `${val.toFixed(1)} dBZ`;
-    } else if (_colorbarProduct === "classification") {
+    } else if (baseProd === "classification") {
         const cls = _nearestHydroClass(val);
         text = `${cls.label} (${cls.code})`;
     } else {

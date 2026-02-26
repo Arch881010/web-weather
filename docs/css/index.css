@@ -152,13 +152,51 @@ body.settings-open #radar-colorbar {
 #radar-runtime-status,
 #radar-runtime-timer {
     white-space: nowrap;
-    overflow: hidden;
+    overflow: visible;
     text-overflow: ellipsis;
     max-width: 100%;
 }
 
 #radar-runtime-status {
     max-width: min(62vw, 760px);
+}
+
+#status-product-switch {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+    font-family: inherit;
+    vertical-align: middle;
+}
+#status-product-switch:hover {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+#status-product-switch:focus {
+    border-color: rgba(100, 160, 255, 0.7);
+    box-shadow: 0 0 0 1px rgba(100, 160, 255, 0.3);
+}
+#status-product-switch option {
+    background: #1a1a2e;
+    color: #fff;
+}
+
+.status-level-badge {
+    display: inline-block;
+    background: rgba(100, 160, 255, 0.25);
+    color: rgba(200, 220, 255, 0.95);
+    border: 1px solid rgba(100, 160, 255, 0.4);
+    border-radius: 3px;
+    padding: 0 4px;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: middle;
+    letter-spacing: 0.5px;
 }
 
 #loading-screen {
