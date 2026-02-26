@@ -183,6 +183,26 @@ const SPECTRAL_CC_COLORS = [
     [1.05, 255, 255, 255, 200],
 ];
 
+// ── Hydrometeor classification palette (HCA/HHC codes) ──
+// Codes: 0=No data, 10=Biological, 20=Ground clutter/AP, 30=Ice crystals,
+// 40=Dry snow, 50=Wet snow, 60=Rain, 70=Heavy rain, 80=Big drops,
+// 90=Graupel, 100=Hail, 140=Unknown, 150=Range folded
+const HYDRO_CLASS = [
+    { code: 0,   label: "No data",              short: "No data",   rgba: [  0,   0,   0,   0] },
+    { code: 10,  label: "Biological",           short: "Biological",rgba: [170, 200, 120, 200] },
+    { code: 20,  label: "Ground clutter/AP",    short: "Clutter",   rgba: [120, 120, 120, 200] },
+    { code: 30,  label: "Ice crystals",         short: "Ice",       rgba: [180, 220, 255, 200] },
+    { code: 40,  label: "Dry snow",             short: "Dry snow",  rgba: [120, 200, 255, 200] },
+    { code: 50,  label: "Wet snow",             short: "Wet snow",  rgba: [ 70, 130, 180, 200] },
+    { code: 60,  label: "Rain",                 short: "Rain",      rgba: [  0, 200,   0, 200] },
+    { code: 70,  label: "Heavy rain",           short: "Heavy rain",rgba: [255, 255,   0, 200] },
+    { code: 80,  label: "Big drops",            short: "Big drops", rgba: [255, 165,   0, 200] },
+    { code: 90,  label: "Graupel",              short: "Graupel",   rgba: [255, 105, 180, 200] },
+    { code: 100, label: "Hail",                 short: "Hail",      rgba: [220,   0,   0, 220] },
+    { code: 140, label: "Unknown",              short: "Unknown",   rgba: [200, 200, 200, 200] },
+    { code: 150, label: "Range folded",         short: "Range fold",rgba: [160,  32, 240, 200] },
+];
+
 // ── Named colormap lookup tables for built-in maps ──
 const BUILTIN_VELOCITY_CMAPS = {
     "nwsvel": NWS_VEL_STOPS,
@@ -239,6 +259,8 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
     } else if (product === "cc") {
         const ccStops = BUILTIN_CC_CMAPS[cmapKey] || CC_COLORS;
         _buildSteppedLUT(lut, ccStops, vmin, vmax);
+    } else if (product === "classification") {
+        _buildClassificationLUT(lut, vmin, vmax);
     } else if (product === "reflectivity") {
         if (cmapKey === "turbo") {
             _buildInterpolatedLUT(lut, TURBO_STOPS, 200);
@@ -262,6 +284,33 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
     // 255 = no data → transparent
     lut[255 * 4 + 3] = 0;
     return lut;
+}
+
+function _nearestHydroClass(value) {
+    let best = HYDRO_CLASS[0];
+    let bestDist = Infinity;
+    for (const cls of HYDRO_CLASS) {
+        const dist = Math.abs(value - cls.code);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = cls;
+        }
+    }
+    return best;
+}
+
+function _buildClassificationLUT(lut, vmin, vmax) {
+    for (let i = 0; i < 255; i++) {
+        const value = vmin + (i / 254) * (vmax - vmin);
+        const cls = _nearestHydroClass(value);
+        const [r, g, b, a] = cls.rgba;
+        lut[i * 4] = r;
+        lut[i * 4 + 1] = g;
+        lut[i * 4 + 2] = b;
+        lut[i * 4 + 3] = a;
+    }
+    // No-data sentinel transparent
+    lut[255 * 4 + 3] = 0;
 }
 
 function _buildSteppedLUT(lut, stops, vmin, vmax) {
@@ -405,6 +454,50 @@ const RadarCanvasLayer = L.GridLayer.extend({
         }, options || {});
 
         L.GridLayer.prototype.initialize.call(this, options);
+    },
+
+    /**
+     * Sample the underlying gate value at a given LatLng. Returns null when
+     * outside coverage or when the gate is no-data.
+     */
+    getValueAtLatLng: function (latlng) {
+        if (!latlng) return null;
+
+        const metersPerDegLat = 111320;
+        const metersPerDegLon = 111320 * this._cosRadarLat;
+
+        const dx = (latlng.lng - this._radarLon) * metersPerDegLon;
+        const dy = (latlng.lat - this._radarLat) * metersPerDegLat;
+        const rangeSq = dx * dx + dy * dy;
+        const maxRangeSq = this._maxRange * this._maxRange;
+        if (rangeSq <= 0 || rangeSq > maxRangeSq) return null;
+
+        const range = Math.sqrt(rangeSq);
+        const gateIdx = Math.floor((range - this._firstGateRange) / this._gateWidth);
+        if (gateIdx < 0 || gateIdx >= this._numGates) return null;
+
+        let az = (Math.atan2(dx, dy) * (180 / Math.PI));
+        if (az < 0) az += 360;
+        let radial = Math.round((az - this._azOffset) / this._azStep);
+        radial = ((radial % this._numRadials) + this._numRadials) % this._numRadials;
+
+        const idx = radial * this._numGates + gateIdx;
+        const val = this._gateData[idx];
+        if (val === this._noData || val === 255) return null;
+
+        const physical = this._sweepData.vmin + (val / 254) * (this._sweepData.vmax - this._sweepData.vmin);
+
+        if (this._sweepData.product === "classification") {
+            const cls = _nearestHydroClass(physical);
+            return { product: "classification", code: cls.code, label: cls.label, rgba: cls.rgba };
+        }
+
+        let units = "";
+        if (this._sweepData.product === "reflectivity") units = "dBZ";
+        else if (this._sweepData.product === "velocity" || this._sweepData.product === "srv") units = "m/s";
+        else if (this._sweepData.product === "cc") units = "ρHV";
+
+        return { product: this._sweepData.product, value: physical, units };
     },
 
     createTile: function (coords) {
@@ -566,6 +659,11 @@ function updateRadarColorbar(product, vmin, vmax, cmap) {
     _colorbarVmin = vmin;
     _colorbarVmax = vmax;
 
+    if (product === "classification") {
+        _drawClassificationColorbar(vmin, vmax);
+        return;
+    }
+
     const lut = buildRadarColorLUT(product, vmin, vmax, cmap);
 
     // Draw gradient on canvas
@@ -612,6 +710,45 @@ function updateRadarColorbar(product, vmin, vmax, cmap) {
     bar.style.display = "";
 }
 
+function _drawClassificationColorbar(vmin, vmax) {
+    const canvas = document.getElementById("colorbar-canvas");
+    const labels = document.getElementById("colorbar-labels");
+    const bar = document.getElementById("radar-colorbar");
+    if (!canvas || !bar) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const visible = HYDRO_CLASS.filter((cls) => cls.rgba[3] !== 0);
+    const segment = w / visible.length;
+
+    visible.forEach((cls, idx) => {
+        const [r, g, b, a] = cls.rgba;
+        ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
+        ctx.fillRect(idx * segment, 0, segment, h);
+    });
+
+    if (labels) {
+        labels.innerHTML = "";
+        visible.forEach((cls, idx) => {
+            const span = document.createElement("span");
+            span.style.left = ((idx + 0.5) / visible.length) * 100 + "%";
+            span.textContent = cls.short || cls.label;
+            labels.appendChild(span);
+        });
+    }
+
+    // Bind tooltip events (once)
+    if (!canvas._colorbarBound) {
+        canvas.addEventListener("mousemove", _colorbarMouseMove);
+        canvas.addEventListener("mouseleave", _colorbarMouseLeave);
+        canvas._colorbarBound = true;
+    }
+
+    bar.style.display = "";
+}
+
 function _colorbarMouseMove(e) {
     const canvas = e.currentTarget;
     const rect = canvas.getBoundingClientRect();
@@ -630,6 +767,9 @@ function _colorbarMouseMove(e) {
         text = `\u03C1HV: ${val.toFixed(3)}`;
     } else if (_colorbarProduct === "reflectivity") {
         text = `${val.toFixed(1)} dBZ`;
+    } else if (_colorbarProduct === "classification") {
+        const cls = _nearestHydroClass(val);
+        text = `${cls.label} (${cls.code})`;
     } else {
         text = val.toFixed(1);
     }

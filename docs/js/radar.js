@@ -14,6 +14,8 @@ const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
 const RADAR_AUTO_PRODUCTS = new Set(["reflectivity", "srv"]);
+let radarHoverHandler = null;
+let radarHoverEnabled = false; // user preference, default off
 
 // ── Per-product colormap defaults and built-in options ──
 const DEFAULT_COLORMAPS = {
@@ -273,7 +275,7 @@ function radarProductLabel(product) {
         velocity: "Velocity",
         srv: "SRV",
         cc: "CC",
-        classification: "Classification",
+        classification: "Hydrometer classification",
     };
     return labels[normalized] || "Reflectivity";
 }
@@ -312,6 +314,7 @@ function clearRadarLayerById() {
                 map.removeLayer(layer);
             }
         });
+        _unbindRadarHover();
     } catch (e) {
         console.warn(e);
     }
@@ -385,6 +388,8 @@ function setRadarLayerFromSweep(sweepData, opacity) {
         opacity: opacity,
         cmap: cmap,
     }).addTo(map);
+
+    _bindRadarHover();
 
     updateRadarColorbar(product, sweepData.vmin, sweepData.vmax, cmap);
     return true;
@@ -514,6 +519,7 @@ function removeRadar() {
         map.removeLayer(radarLayer);
         radarLayer = null;
     }
+    _unbindRadarHover();
     document.querySelectorAll(".radar.selected-radar").forEach((label) => {
         label.classList.remove("selected-radar");
     });
@@ -536,6 +542,73 @@ function removeRadar() {
     setBottomRadarStatus("");
     hideRadarColorbar();
     console.log("Radar layer removed");
+}
+
+function _ensureRadarHoverTooltip() {
+    let el = document.getElementById("radar-hover-tooltip");
+    if (!el) {
+        el = document.createElement("div");
+        el.id = "radar-hover-tooltip";
+        el.style.position = "fixed";
+        el.style.pointerEvents = "none";
+        el.style.background = "rgba(0,0,0,0.75)";
+        el.style.color = "#fff";
+        el.style.padding = "4px 6px";
+        el.style.borderRadius = "4px";
+        el.style.fontSize = "12px";
+        el.style.zIndex = 10000;
+        el.style.transform = "translate(10px, -10px)";
+        el.style.display = "none";
+        document.body.appendChild(el);
+    }
+    return el;
+}
+
+function _bindRadarHover() {
+    if (!radarHoverEnabled) return;
+    if (!radarLayer || radarHoverHandler) return;
+    const tooltip = _ensureRadarHoverTooltip();
+    radarHoverHandler = (e) => {
+        if (!radarLayer || !radarLayer.getValueAtLatLng) return;
+        const sample = radarLayer.getValueAtLatLng(e.latlng);
+        if (!sample) {
+            tooltip.style.display = "none";
+            return;
+        }
+
+        let text = "";
+        if (sample.product === "classification") {
+            text = `${sample.label} (code ${sample.code})`;
+        } else if (sample.units === "m/s") {
+            const mph = sample.value * 2.23694;
+            text = `${sample.value.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
+        } else if (sample.units) {
+            text = `${sample.value.toFixed(1)} ${sample.units}`;
+        } else {
+            text = sample.value.toFixed(1);
+        }
+
+        tooltip.textContent = text;
+        tooltip.style.left = `${e.originalEvent.clientX + 8}px`;
+        tooltip.style.top = `${e.originalEvent.clientY - 8}px`;
+        tooltip.style.display = "block";
+    };
+    map.on("mousemove", radarHoverHandler);
+    map.on("mouseout", _hideRadarHoverTooltip);
+}
+
+function _hideRadarHoverTooltip() {
+    const el = document.getElementById("radar-hover-tooltip");
+    if (el) el.style.display = "none";
+}
+
+function _unbindRadarHover() {
+    if (radarHoverHandler) {
+        map.off("mousemove", radarHoverHandler);
+        map.off("mouseout", _hideRadarHoverTooltip);
+        radarHoverHandler = null;
+    }
+    _hideRadarHoverTooltip();
 }
 
 function updateRadarLayer(isAutomaticTick = false) {
@@ -599,6 +672,7 @@ function updateRadarLayer(isAutomaticTick = false) {
     } else if (radarLayerFound) {
         console.warn("Radar layer type changed, removing old layer.");
         clearRadarLayerById();
+        _unbindRadarHover();
     }
 
     L.tileLayer

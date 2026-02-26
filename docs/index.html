@@ -200,15 +200,26 @@
 						</div>
 					</div>
 					<div class="settings-section">
-						<h3><i class=""></i> Markers</h3>
+						<h3><i class="fas fa-crosshairs"></i> Interaction</h3>
 						<div class="setting-item">
-							<label for="open-user-markers"
-								>User Markers<span
-									class="info-icon"
-									title="The markers you have made.">
-									<i class="fas fa-info-circle"></i> </span
-							></label>
-							<button id="open-user-markers">Open Markers</button>
+							<label for="radar-hover-toggle">
+								Radar Hover Tooltip
+								<span class="info-icon" title="Show radar values when hovering (dBZ, m/s, classification, etc.)">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<input type="checkbox" id="radar-hover-toggle" />
+						</div>
+					</div>
+					<div class="settings-section">
+						<h3><i class="fas fa-map-marker-alt"></i> Markers</h3>
+						<div class="setting-item">
+							<label>Place Marker</label>
+							<span style="color:#aaa;font-size:0.85em;">Right-click on the map</span>
+						</div>
+						<div class="setting-item">
+							<label for="clear-user-markers">Clear All Markers</label>
+							<button id="clear-user-markers" style="background:#c33;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Clear</button>
 						</div>
 					</div>
 				</div>

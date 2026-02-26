@@ -78,6 +78,12 @@ const loadSettings = () => {
 	document.getElementById("radar-site-product").value =
 		savedSettings.radarApi.product || "reflectivity";
 
+	// Radar hover tooltip toggle
+	const hoverPref = savedSettings.radarHoverEnabled === true;
+	const hoverToggle = document.getElementById("radar-hover-toggle");
+	if (hoverToggle) hoverToggle.checked = hoverPref;
+	if (typeof radarHoverEnabled !== "undefined") radarHoverEnabled = hoverPref;
+
 	// Populate colormap dropdown based on current product
 	if (typeof updateColormapDropdown === "function") {
 		updateColormapDropdown(savedSettings.radarApi.product || "reflectivity");
@@ -134,6 +140,10 @@ const saveSettings = () => {
 	config.radarApi.site = radarSite;
 	config.radarApi.product = radarSiteProduct;
 	config.radarApi.cmap = radarCmap;
+
+	// Radar hover tooltip preference
+	const hoverToggle = document.getElementById("radar-hover-toggle");
+	config.radarHoverEnabled = hoverToggle ? hoverToggle.checked : false;
 
 	// Save colormap per-product
 	if (!config.radarApi.colormaps) config.radarApi.colormaps = {};

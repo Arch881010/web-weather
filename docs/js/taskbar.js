@@ -147,6 +147,29 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
+	// ── Radar hover toggle ──
+	const hoverToggle = document.getElementById("radar-hover-toggle");
+	if (hoverToggle) {
+		hoverToggle.addEventListener("change", () => {
+			radarHoverEnabled = hoverToggle.checked;
+			if (radarHoverEnabled) {
+				_bindRadarHover();
+			} else {
+				_unbindRadarHover();
+			}
+		});
+	}
+
+	// ── Clear all user markers ──
+	const clearMarkersBtn = document.getElementById("clear-user-markers");
+	if (clearMarkersBtn) {
+		clearMarkersBtn.addEventListener("click", () => {
+			if (!confirm("Delete all user markers?")) return;
+			localStorage.removeItem("weatherAppUserMarkers");
+			drawUserMarkers();
+		});
+	}
+
 	// ── Initialize colormap dropdown on load ──
 	if (typeof updateColormapDropdown === "function") {
 		const currentProduct = document.getElementById("radar-site-product")?.value || "reflectivity";

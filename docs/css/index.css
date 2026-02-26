@@ -716,3 +716,146 @@ input:focus {
         bottom: 102px;
     }
 }
+
+/* ── Marker dialog overlay ── */
+#marker-dialog-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+
+#marker-dialog {
+    background: #1e1e1e;
+    color: #eee;
+    border-radius: 10px;
+    padding: 20px 24px;
+    width: 320px;
+    max-width: 92vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    font-family: inherit;
+}
+
+#marker-dialog-title {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.marker-dialog-label {
+    display: block;
+    font-size: 12px;
+    color: #aaa;
+    margin: 8px 0 4px;
+}
+
+#marker-dialog-name {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border: 1px solid #555;
+    border-radius: 5px;
+    background: #2a2a2a;
+    color: #fff;
+    font-size: 14px;
+}
+
+#marker-dialog-name:focus {
+    border-color: #4488ff;
+    outline: none;
+}
+
+#marker-dialog-icons {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 4px 0;
+}
+
+.marker-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background: #2a2a2a;
+    color: #ccc;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.marker-icon-btn:hover {
+    background: #333;
+}
+
+.marker-icon-btn.selected {
+    border-color: #4488ff;
+    background: #293a52;
+    color: #fff;
+}
+
+#marker-dialog-colors {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 4px 0;
+}
+
+.marker-color-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.15s;
+}
+
+.marker-color-btn:hover {
+    transform: scale(1.15);
+}
+
+.marker-color-btn.selected {
+    border-color: #fff;
+    box-shadow: 0 0 6px rgba(255,255,255,0.5);
+}
+
+#marker-dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+#marker-dialog-buttons button {
+    padding: 6px 18px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#marker-dialog-cancel {
+    background: #444;
+    color: #ccc;
+}
+
+#marker-dialog-cancel:hover {
+    background: #555;
+}
+
+#marker-dialog-ok {
+    background: #4488ff;
+    color: #fff;
+}
+
+#marker-dialog-ok:hover {
+    background: #3366dd;
+}
