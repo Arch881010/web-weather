@@ -45,9 +45,18 @@ document.addEventListener("mapLoaded", () => {
 	updateRadarLayer();
 	addCountyBorders();
 	fetchCountyBorders();
+	addAllMarkers();
 
 	updateWeatherAlerts();
 	addCountdown().then(() => updateCountdown());
+
+	// Right-click to place user marker (custom UI dialog)
+	map.on("contextmenu", async (e) => {
+		const result = await showMarkerDialog({ title: "Place Marker", name: "My Marker" });
+		if (result) {
+			addUserMarker(e.latlng.lat, e.latlng.lng, result.name, result.icon, result.color);
+		}
+	});
 });
 
 // Copilot

@@ -1,174 +1,265 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Weather Map</title>
-    <link rel="stylesheet" href="./leaflet/leaflet.css" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
-    />
-    <link rel="stylesheet" href="./css/index.css" />
-    <link rel="stylesheet" href="./css/reflectivity.css" />
-  </head>
-  <body>
-    <div id="loading-screen">
-      <div class="spinner"></div>
-      <p id="loading-screen-text">Loading, please wait...</p>
-    </div>
-    <div id="map"></div>
-    <div id="settings-panel" class="settings-content" style="display: none">
-      <div class="settings-container">
-        <div class="settings-header">
-          <h2>Settings</h2>
-          <button id="close-settings" class="close-btn" title="Close Settings">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Weather Map</title>
+		<link rel="stylesheet" href="./leaflet/leaflet.css" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+		<link rel="stylesheet" href="./css/index.css" />
+	</head>
+	<body>
+		<div id="loading-screen">
+			<div class="spinner"></div>
+			<p id="loading-screen-text">Loading, please wait...</p>
+		</div>
+		<div id="map"></div>
+		<div id="radar-colorbar" style="display:none">
+			<canvas id="colorbar-canvas" width="500" height="14"></canvas>
+			<div id="colorbar-labels"></div>
+			<div id="colorbar-tooltip" style="display:none"></div>
+		</div>
+		<div id="bottom-status-bar">
+			<div class="bottom-status-left">
+				<div class="bottom-status-controls" aria-label="Radar quick controls">
+					<button id="open-settings" class="icon-control" title="Open settings" aria-label="Open settings">
+						<i class="fas fa-cog" aria-hidden="true"></i>
+					</button>
+					<button id="quick-radar-mode" class="icon-control" title="Open radar source setting" aria-label="Open radar source setting">
+						<i class="fas fa-satellite-dish" aria-hidden="true"></i>
+					</button>
+					<button id="quick-radar-product" class="icon-control" title="Open radar product setting" aria-label="Open radar product setting">
+						<i class="fas fa-layer-group" aria-hidden="true"></i>
+					</button>
+					<button id="quick-radar-cmap" class="icon-control" title="Open radar color map setting" aria-label="Open radar color map setting">
+						<i class="fas fa-palette" aria-hidden="true"></i>
+					</button>
+				</div>
+			</div>
+			<div class="bottom-status-right">
+				<span id="radar-runtime-status">Radar Status: Initializing...</span>
+				<span id="radar-runtime-timer">Next update in: 60s</span>
+			</div>
+		</div>
+		<div id="settings-panel" class="settings-content" style="display: none">
+			<div class="settings-container">
+				<div class="settings-header">
+					<h2>Settings</h2>
+					<button id="close-settings" class="close-btn" title="Close Settings">
+						<i class="fas fa-times"></i>
+					</button>
+				</div>
 
-        <div class="settings-body">
-          <div class="settings-section">
-            <h3><i class="fas fa-sliders-h"></i> Opacity Controls</h3>
-            <div class="setting-item">
-              <label for="opacity-radar">
-                Radar
-                <span
-                  class="info-icon"
-                  title="0-100, where 0% is invisible and 100% is most visible."
-                >
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </label>
-              <div class="input-group">
-                <input
-                  type="number"
-                  id="opacity-radar"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="50"
-                />
-                <span class="unit">%</span>
-              </div>
-            </div>
+				<div class="settings-body">
+					<div class="settings-section">
+						<h3><i class="fas fa-sliders-h"></i> Opacity Controls</h3>
+						<div class="setting-item">
+							<label for="opacity-radar">
+								Radar
+								<span
+									class="info-icon"
+									title="0-100, where 0% is invisible and 100% is most visible.">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<div class="input-group">
+								<input
+									type="number"
+									id="opacity-radar"
+									min="0"
+									max="100"
+									step="1"
+									value="50" />
+								<span class="unit">%</span>
+							</div>
+						</div>
 
-            <div class="setting-item">
-              <label for="opacity-polygon-fill">
-                Polygon Fill
-                <span
-                  class="info-icon"
-                  title="0-100, where 0% is invisible and 100% is most visible."
-                >
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </label>
-              <div class="input-group">
-                <input
-                  type="number"
-                  id="opacity-polygon-fill"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="0"
-                />
-                <span class="unit">%</span>
-              </div>
-            </div>
+						<div class="setting-item">
+							<label for="opacity-polygon-fill">
+								Polygon Fill
+								<span
+									class="info-icon"
+									title="0-100, where 0% is invisible and 100% is most visible.">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<div class="input-group">
+								<input
+									type="number"
+									id="opacity-polygon-fill"
+									min="0"
+									max="100"
+									step="1"
+									value="0" />
+								<span class="unit">%</span>
+							</div>
+						</div>
 
-            <div class="setting-item">
-              <label for="opacity-polygon">
-                Polygon Border
-                <span
-                  class="info-icon"
-                  title="0-100, where 0% is invisible and 100% is most visible."
-                >
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </label>
-              <div class="input-group">
-                <input
-                  type="number"
-                  id="opacity-polygon"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="100"
-                />
-                <span class="unit">%</span>
-              </div>
-            </div>
+						<div class="setting-item">
+							<label for="opacity-polygon">
+								Polygon Border
+								<span
+									class="info-icon"
+									title="0-100, where 0% is invisible and 100% is most visible.">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<div class="input-group">
+								<input
+									type="number"
+									id="opacity-polygon"
+									min="0"
+									max="100"
+									step="1"
+									value="100" />
+								<span class="unit">%</span>
+							</div>
+						</div>
 
-            <div class="setting-item">
-              <label for="opacity-county-borders">
-                County Borders
-                <span
-                  class="info-icon"
-                  title="0-100, where 0% is invisible and 100% is most visible."
-                >
-                  <i class="fas fa-info-circle"></i>
-                </span>
-              </label>
-              <div class="input-group">
-                <input
-                  type="number"
-                  id="opacity-county-borders"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value="100"
-                />
-                <span class="unit">%</span>
-              </div>
-            </div>
-          </div>
+						<div class="setting-item">
+							<label for="opacity-county-borders">
+								County Borders
+								<span
+									class="info-icon"
+									title="0-100, where 0% is invisible and 100% is most visible.">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<div class="input-group">
+								<input
+									type="number"
+									id="opacity-county-borders"
+									min="0"
+									max="100"
+									step="1"
+									value="100" />
+								<span class="unit">%</span>
+							</div>
+						</div>
+					</div>
 
-          <div class="settings-section">
-            <h3><i class="fas fa-satellite-dish"></i> Radar Product</h3>
-            <div class="setting-item">
-              <label for="radar-tilemap">Product Type</label>
-              <select id="radar-tilemap">
-                <option value="n0r">N0R (Base Reflectivity)</option>
-                <option value="n0q" selected>N0Q (Base Reflectivity Digital)</option>
-              </select>
-            </div>
-          </div>
-        </div>
+					<div class="settings-section">
+						<h3><i class="fas fa-satellite-dish"></i> Radar Product</h3>
+						<div class="setting-item">
+							<label for="radar-tilemap">Product Type</label>
+							<select id="radar-tilemap">
+								<option value="n0r">N0R (Base Reflectivity)</option>
+								<option value="n0q" selected>
+									N0Q (Base Reflectivity Digital)
+								</option>
+							</select>
+						</div>
+						<div class="setting-item">
+							<label for="radar-mode">Radar Source</label>
+							<select id="radar-mode">
+								<option value="wms" selected>WMS (N0R/N0Q)</option>
+								<option value="site">Radar Sites</option>
+							</select>
+						</div>
+						<div class="setting-item">
+							<label for="radar-site">Radar Sites</label>
+							<input
+								type="text"
+								id="radar-site"
+								maxlength="4"
+								placeholder="KLZK" />
+						</div>
+						<div class="setting-item">
+							<label for="radar-data-level">Data Level</label>
+							<select id="radar-data-level">
+								<option value="2" selected>Basic-Resolution</option>
+								<option value="3">Super-Resolution</option>
+							</select>
+						</div>
+						<div class="setting-item">
+							<label for="radar-site-product">Site Product</label>
+							<select id="radar-site-product">
+								<!-- Populated dynamically based on data level -->
+							</select>
+						</div>
+						<div class="setting-item">
+							<label>Radar Status</label>
+							<span id="radar-site-status"></span>
+						</div>
+						<div class="setting-item">
+							<label for="radar-cmap">Color Map</label>
+							<div class="cmap-controls">
+								<select id="radar-cmap">
+									<!-- Populated dynamically based on product -->
+								</select>
+								<button id="upload-cmap-btn" class="cmap-action-btn" title="Upload custom colormap (.pal)">
+									<i class="fas fa-upload"></i>
+								</button>
+								<button id="export-cmap-btn" class="cmap-action-btn" title="Export selected colormap">
+									<i class="fas fa-download"></i>
+								</button>
+								<button id="delete-cmap-btn" class="cmap-action-btn cmap-delete-btn" title="Delete custom colormap">
+									<i class="fas fa-trash"></i>
+								</button>
+										<input type="file" id="cmap-file-input" accept=".pal" style="display:none" />
+							</div>
+						</div>
+					</div>
+					<div class="settings-section">
+						<h3><i class="fas fa-crosshairs"></i> Interaction</h3>
+						<div class="setting-item">
+							<label for="radar-hover-toggle">
+								Radar Hover Tooltip
+								<span class="info-icon" title="Show radar values when hovering (dBZ, m/s, classification, etc.)">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<input type="checkbox" id="radar-hover-toggle" />
+						</div>
+					</div>
+					<div class="settings-section">
+						<h3><i class="fas fa-map-marker-alt"></i> Markers</h3>
+						<div class="setting-item">
+							<label>Place Marker</label>
+							<span style="color:#aaa;font-size:0.85em;">Right-click on the map</span>
+						</div>
+						<div class="setting-item">
+							<label for="clear-user-markers">Clear All Markers</label>
+							<button id="clear-user-markers" style="background:#c33;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Clear</button>
+						</div>
+					</div>
+				</div>
 
-        <div class="settings-footer">
-          <div id="version-info">
-            <div class="version-item">
-              <strong>Version:</strong> <span id="version-number">Loading...</span>
-            </div>
-            <div class="version-item">
-              <strong>Last Updated:</strong> <span id="time-updated">Loading...</span>
-            </div>
-            <div class="version-item">
-              <strong>Recent Commit:</strong> <span id="recent-commit">Loading...</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="reflectivity-bar">
-      <div class="reflectivity-labels">
-        <span>Light</span>
-        <span>Moderate</span>
-        <span>Heavy</span>
-      </div>
-    </div>
-    <!-- Looking for the code? https://github.com/Arch881010/web-weather -->
-    <script src="./js/eventListeners.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
-    <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
-    <script src="./js/config.js"></script>
-    <script src="./js/prototypes.js"></script>
-    <script src="./js/utils.js"></script>
-    <script src="./leaflet/leaflet.js"></script>
-    <script src="./js/watches.js"></script> 
-    <script src="./js/taskbar.js"></script>
-    <script src="./js/alerts.js"></script>
-    <script src="./js/alertText.js"></script>
-    <script src="./js/map.js"></script>
-  </body>
+				<div class="settings-footer">
+					<div id="version-info">
+						<div class="version-item">
+							<strong>Version:</strong>
+							<span id="version-number">Loading...</span>
+						</div>
+						<div class="version-item">
+							<strong>Last Updated:</strong>
+							<span id="time-updated">Loading...</span>
+						</div>
+						<div class="version-item">
+							<strong>Recent Commit:</strong>
+							<span id="recent-commit">Loading...</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!-- Looking for the code? https://github.com/Arch881010/web-weather -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+		<script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
+		<script src="./js/config.js"></script>
+		<script src="./js/prototypes.js"></script>
+		<script src="./js/utils.js"></script>
+		<script src="./leaflet/leaflet.js"></script>
+		<script src="./js/radarRenderer.js"></script>
+		<script src="./js/radar.js"></script>
+		<script src="./js/markers.js"></script>
+		<script src="./js/eventListeners.js"></script>
+		<script src="./js/watches.js"></script>
+		<script src="./js/taskbar.js"></script>
+		<script src="./js/alerts.js"></script>
+		<script src="./js/alertText.js"></script>
+		<script src="./js/map.js"></script>
+	</body>
 </html>

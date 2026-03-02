@@ -17,6 +17,17 @@ const default_config = {
 	},
 	//api: "https://api.weather.gov/alerts/active",
 	api: "https://data.arch1010.dev/alerts",
+	radarApi: {
+		base: "https://radar.arch1010.dev",
+		imagePath: "/api/radar/image",
+		product: "reflectivity",
+		level: 2,
+		cmap: "NWSRef",
+		colormaps: {},
+		pollIntervalMs: 60000,
+		mode: "wms",
+		site: "KLZK",
+	},
 	devPresets: {
 		"0": {
 			"status": false,
@@ -38,8 +49,19 @@ const default_config = {
 const config = default_config;
 
 const loadSettings = () => {
-	let savedSettings = JSON.parse(localStorage.getItem("weatherAppSettings"));
+	const savedSettingsRaw = localStorage.getItem("weatherAppSettings");
+	let savedSettings = JSON.parse(savedSettingsRaw);
 	if (!savedSettings || savedSettings == "") savedSettings = config;
+	if (!savedSettings.radarApi) savedSettings.radarApi = {};
+	if (!savedSettings.radarApi.colormaps) savedSettings.radarApi.colormaps = {};
+	savedSettings.radarApi = {
+		...default_config.radarApi,
+		...savedSettings.radarApi,
+	};
+	if (savedSettingsRaw && (savedSettings.radarApi.site || "").trim()) {
+		savedSettings.radarApi.site = savedSettings.radarApi.site.trim().toUpperCase();
+		savedSettings.radarApi.mode = "site";
+	}
 	document.getElementById("opacity-radar").value =
 		savedSettings.opacity.radar * 100;
 	document.getElementById("opacity-polygon-fill").value =
@@ -50,13 +72,46 @@ const loadSettings = () => {
 		savedSettings.opacity.countyBorders * 100;
 	document.getElementById("radar-tilemap").value =
 		savedSettings.radarTilemap;
+	document.getElementById("radar-mode").value =
+		savedSettings.radarApi.mode || "wms";
+	document.getElementById("radar-site").value =
+		(savedSettings.radarApi.site || "KLZK").toUpperCase();
+	document.getElementById("radar-data-level").value =
+		String(savedSettings.radarApi.level || 2);
+
+	// Populate product dropdown based on current level, then select saved product
+	if (typeof syncProductDropdownsToLevel === "function") {
+		// Temporarily set config.radarApi so getRadarLevel() works
+		config.radarApi = { ...default_config.radarApi, ...savedSettings.radarApi };
+		syncProductDropdownsToLevel();
+	}
+	document.getElementById("radar-site-product").value =
+		savedSettings.radarApi.product || "reflectivity";
+
+	// Radar hover tooltip toggle
+	const hoverPref = savedSettings.radarHoverEnabled === true;
+	const hoverToggle = document.getElementById("radar-hover-toggle");
+	if (hoverToggle) hoverToggle.checked = hoverPref;
+	if (typeof radarHoverEnabled !== "undefined") radarHoverEnabled = hoverPref;
+
+	// Populate colormap dropdown based on current product
+	if (typeof updateColormapDropdown === "function") {
+		updateColormapDropdown(savedSettings.radarApi.product || "reflectivity");
+	} else {
+		document.getElementById("radar-cmap").value =
+			savedSettings.radarApi.cmap || "NWSRef";
+	}
 
 	// Update config object
 	config.opacity.radar = savedSettings.opacity.radar;
 	config.opacity.polygon_fill = savedSettings.opacity.polygon_fill;
 	config.opacity.polygon = savedSettings.opacity.polygon;
 	config.opacity.countyBorders = savedSettings.opacity.countyBorders;
-	config.radar = savedSettings.radarTilemap;
+	config.radarTilemap = savedSettings.radarTilemap;
+	config.radarApi = {
+		...default_config.radarApi,
+		...savedSettings.radarApi,
+	};
 
 	config.show.watches = true;
 	return savedSettings;
@@ -74,6 +129,17 @@ const saveSettings = () => {
 	const opacityCountyBorders =
 		document.getElementById("opacity-county-borders").value / 100;
 	const radarTilemap = document.getElementById("radar-tilemap").value;
+	const radarMode = document.getElementById("radar-mode").value;
+	const radarSite =
+		document.getElementById("radar-site").value.trim().toUpperCase() ||
+		config.radarApi.site ||
+		"KLZK";
+	const radarSiteProduct =
+		document.getElementById("radar-site-product").value ||
+		"reflectivity";
+	const radarDataLevel =
+		parseInt(document.getElementById("radar-data-level").value, 10) || 2;
+	const radarCmap = document.getElementById("radar-cmap").value || "NWSRef";
 
 	// Update config object
 	config.saveSettings = true;
@@ -82,6 +148,24 @@ const saveSettings = () => {
 	config.opacity.polygon = opacityPolygon;
 	config.opacity.countyBorders = opacityCountyBorders;
 	config.radarTilemap = radarTilemap;
+	config.radarApi.mode = radarMode;
+	config.radarApi.site = radarSite;
+	config.radarApi.product = radarSiteProduct;
+	config.radarApi.level = radarDataLevel;
+	config.radarApi.cmap = radarCmap;
+
+	// Radar hover tooltip preference
+	const hoverToggle = document.getElementById("radar-hover-toggle");
+	config.radarHoverEnabled = hoverToggle ? hoverToggle.checked : false;
+
+	// Save colormap per-product
+	if (!config.radarApi.colormaps) config.radarApi.colormaps = {};
+	const normalizedProduct = typeof normalizeRadarProduct === "function"
+		? normalizeRadarProduct(radarSiteProduct)
+		: radarSiteProduct;
+	config.radarApi.colormaps[normalizedProduct] = radarCmap;
+
+	document.getElementById("radar-site").value = radarSite;
 
 	userSettings = config;
 

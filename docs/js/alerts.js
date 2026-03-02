@@ -116,7 +116,7 @@ function updateWeatherAlerts() {
 						feature.properties.event.toLowerCase() !== "flood advisory"
 				);
 			}
-			console.log(config.show.watches);
+			
 			if (config.show.watches) {
 				const watches = await getWatches();
 				console.warn("Watches " + watches.toString());

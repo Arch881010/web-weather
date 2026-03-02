@@ -277,74 +277,13 @@ function clearLayers(layerIds) {
 	}
 }
 
-// Function to fetch and update radar layer
-function updateRadarLayer() {
-	// If the radar opacity is set to 0, skip loading new radar data and clear the layer if it exists
-	if (userSettings.opacity.radar == 0) {
-		console.error(
-			"Radar layer opacity is set to 0, no need to load new radar data, skipping."
-		);
-		clearLayers(["radar-layer"]);
-		return;
-	}
-
-	// Add the radar layer
-	radarTileMap = userSettings.radar_tilemap;
-	if (radarTileMap == undefined) radarTileMap = "n0q";
-
-	// Check if the radar layer already exists; update opacity if it does, otherwise add it
-	let radarLayerFound = false;
-	let currentType = "undefined";
-	if (map.eachLayer) {
-		map.eachLayer((layer) => {
-			if (layer.options && layer.options.id === "radar-layer") {
-				layer.setOpacity(config.opacity.radar);
-				radarLayerFound = true;
-				currentType = layer.options.layers;
-			}
-		});
-	}
-	if (radarLayerFound && currentType === `nexrad-${radarTileMap}-900913`) {
-		console.info("Radar layer opacity updated.");
-		return;
-	} else if (radarLayerFound) {
-		console.warn("Radar layer type changed, removing old layer.");
-		clearLayers(["radar-layer"]);
-	}
-
-	L.tileLayer
-		.wms(
-			`https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/${radarTileMap}.cgi`,
-			{
-				layers: `nexrad-${radarTileMap}-900913`,
-				//layers: radarTileMap,
-				format: "image/png",
-				transparent: true,
-				attribution: "Weather data © 2024 IEM Nexrad",
-				id: "radar-layer",
-				opacity: config.opacity.radar, // Set the opacity of the radar layer
-			}
-		)
-		.addTo(map);
-	console.info("Radar layer updated.");
-}
-
 async function addCountdown() {
-	// Add countdown timer to the map
-	const countdownDiv = L.control({ position: "bottomright" });
-	countdownDiv.onAdd = function () {
-		const div = L.DomUtil.create("div", "countdown");
-		div.id = "countdown";
-		div.innerText = "Next update in: 60s";
-		div.style.padding = "5px";
-		div.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-		div.style.color = "white";
-		div.style.fontSize = "14px";
-		div.style.borderRadius = "5px";
-		div.style.boxShadow = "0 0 10px rgba(0, 0, 0, 0.5)";
-		return div;
-	};
-	countdownDiv.addTo(map);
+	const countdownElement =
+		document.getElementById("radar-runtime-timer") ||
+		document.getElementById("countdown");
+	if (countdownElement) {
+		countdownElement.innerText = "Next update in: 60s";
+	}
 }
 
 // Function to update the countdown timer
@@ -353,7 +292,9 @@ function updateCountdown(force) {
 	if (window.countdownIsRunning && !force) {
 		return console.warn("The countdown is already active, skipping.");
 	}
-	const countdownElement = document.getElementById("countdown");
+	const countdownElement =
+		document.getElementById("radar-runtime-timer") ||
+		document.getElementById("countdown");
 	let timeLeft = 60;
 	window.timeUntilNextUpdate = timeLeft;
 	window.countdownIsRunning = true;
@@ -362,13 +303,15 @@ function updateCountdown(force) {
 	setInterval(() => {
 		timeLeft = window.timeUntilNextUpdate;
 		timeLeft -= 1;
-		countdownElement.innerText = `Next update in: ${timeLeft}s`;
+		if (countdownElement) {
+			countdownElement.innerText = `Next update in: ${timeLeft}s`;
+		}
 
 		if (timeLeft <= 0) {
 			timeLeft = 60;
 			window.timeUntilNextUpdate = timeLeft;
 			updateWeatherAlerts();
-			updateRadarLayer();
+			updateRadarLayer(true);
 		}
 		window.timeUntilNextUpdate = timeLeft;
 	}, 1000);
@@ -378,14 +321,13 @@ function drawPolygons(data) {
 	const size = 4;
 	const change = 2;
 
-	// Add the black border around each polygon
-	if (window.countdown)
-		clearLayers([
-			"weather-alerts",
-			"weather-alerts-border",
-			"weather-alerts-background",
-			"alert-extras",
-		]);
+	// Always clear previous alert layers so expired alerts disappear
+	clearLayers([
+		"weather-alerts",
+		"weather-alerts-border",
+		"weather-alerts-background",
+		"alert-extras",
+	]);
 
 	if (config.opacity.polygon == 0) return;
 
@@ -619,10 +561,7 @@ function getSevereStorm(feature) {
 			params.parameters.hail.maxHail != "N/A"
 		) {
 			params.parameters.hail.maxHail += '"';
-		}
-
-		if (params.parameters.hail.maxHail.replaceAll('"', "") == "0.75")
-			console.warn(params);
+		} 
 
 		return params;
 	} catch (e) {
