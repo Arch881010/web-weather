@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Tue Mar  3 00:59:23 UTC 2026",
-    "recent-commit": "(Fix): Occasionally Radar would stop updating as it would cancel the fetch (race conditions)"
+    "time-updated": "Tue Mar  3 01:01:56 UTC 2026",
+    "recent-commit": "(Patch): XSS Scripting on radar host"
 }
