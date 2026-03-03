@@ -885,7 +885,7 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
                 self._set_cors_headers()
                 self.send_header("Content-Type", "application/octet-stream")
                 self.send_header("Content-Length", str(len(payload)))
-                self.send_header("X-Radar-Site", site)
+                self.send_header("X-Radar-Site", self._sanitize_header_value(site))
                 self.send_header("X-Radar-Key", entry.key)
                 self.end_headers()
                 self.wfile.write(payload)
@@ -961,6 +961,13 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
         if not values:
             raise ValueError("Missing required query parameter: site")
         return values[0]
+
+    @staticmethod
+    def _sanitize_header_value(value: str) -> str:
+        """
+        Remove characters that could break HTTP headers (CR/LF).
+        """
+        return value.replace("\r", "").replace("\n", "")
 
     @staticmethod
     def _is_true(value: str) -> bool:
