@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Mon Mar  2 00:12:57 UTC 2026",
-    "recent-commit": "(Feat): Local Radar & User Markers (#31)"
+    "time-updated": "Tue Mar  3 00:59:23 UTC 2026",
+    "recent-commit": "(Fix): Occasionally Radar would stop updating as it would cancel the fetch (race conditions)"
 }
