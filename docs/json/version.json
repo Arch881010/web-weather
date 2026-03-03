@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Tue Mar  3 01:01:56 UTC 2026",
-    "recent-commit": "(Patch): XSS Scripting on radar host"
+    "time-updated": "Tue Mar  3 04:24:59 UTC 2026",
+    "recent-commit": "(Fix): Exporting Colormap exports as .pal, added renaming of custom .pal, countdown always has two places"
 }
