@@ -1,5 +1,4 @@
 let radarLayer = null;
-let radarRefreshInterval = null;
 let radarSelectedSite = null;
 let radarLastKey = null;
 let radarLastSite = null;
@@ -8,12 +7,12 @@ let radarLastCmap = null;
 let radarNeedsInitialForce = true;
 let radarActiveMode = null;
 let radarFetchController = null; // AbortController for in-flight fetch
+let radarInFlightParams = null; // { site, product, level } of the current in-flight fetch
 const RADAR_SWEEP_CACHE = new Map(); // browser-side sweep data cache
 const RADAR_SWEEP_CACHE_TTL_MS = 1 * 60 * 1000; // 1 minutes
 const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
-const RADAR_AUTO_PRODUCTS = new Set(["reflectivity", "srv"]);
 let radarHoverHandler = null;
 let radarHoverEnabled = false; // user preference, default off
 
@@ -615,13 +614,30 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         const site = radarSiteCode.toUpperCase();
         radarSelectedSite = site;
         const requestedProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
+        const level = getRadarLevel();
+
+        // If there's already an in-flight fetch for the same site/product/level
+        // and this isn't a forced refresh, skip the redundant request.
+        if (
+            !force &&
+            radarFetchController &&
+            radarInFlightParams &&
+            radarInFlightParams.site === site &&
+            radarInFlightParams.product === requestedProduct &&
+            radarInFlightParams.level === level
+        ) {
+            console.log(`[radar] Skipping duplicate fetch for ${site}:${requestedProduct}:L${level} (already in-flight)`);
+            return false;
+        }
 
         // Cancel any in-flight fetch before starting a new one
         if (radarFetchController) {
             radarFetchController.abort();
             radarFetchController = null;
+            radarInFlightParams = null;
         }
         radarFetchController = new AbortController();
+        radarInFlightParams = { site, product: requestedProduct, level };
         const signal = radarFetchController.signal;
 
         setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(requestedProduct)} for ${site}...`);
@@ -629,6 +645,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         // Client-side canvas rendering from sweep data (Attic Radar style)
         const sweepData = await fetchSweepData(site, force, signal);
         radarFetchController = null;
+        radarInFlightParams = null;
         radarSweepSupported = true;
 
         const key = sweepData.key || "";
@@ -673,9 +690,9 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         _bindStatusProductSwitch();
         return true;
     } catch (error) {
-        // If aborted (user switched site), silently ignore
+        // If aborted (e.g. user switched site or a forced refresh was requested), silently ignore
         if (error.name === "AbortError") {
-            console.log("Radar fetch aborted (site changed)");
+            console.log("[radar] Radar fetch aborted (superseded by new request)");
             return false;
         }
         const site = (radarSiteCode || "").trim().toUpperCase();
@@ -695,22 +712,6 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
     }
 }
 
-function startRadarAutoRefresh() {
-    if (radarRefreshInterval) {
-        clearInterval(radarRefreshInterval);
-        radarRefreshInterval = null;
-    }
-
-    const product = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
-    if (!RADAR_AUTO_PRODUCTS.has(product)) {
-        return;
-    }
-
-    radarRefreshInterval = setInterval(async () => {
-        if (!radarSelectedSite) return;
-        await loadRadarForSite(radarSelectedSite, null, false);
-    }, getRadarApiConfig().pollIntervalMs);
-}
 
 function removeRadar() {
     if (radarLayer) {
@@ -721,10 +722,6 @@ function removeRadar() {
     document.querySelectorAll(".radar.selected-radar").forEach((label) => {
         label.classList.remove("selected-radar");
     });
-    if (radarRefreshInterval) {
-        clearInterval(radarRefreshInterval);
-        radarRefreshInterval = null;
-    }
     radarSelectedSite = null;
     radarLastKey = null;
     radarLastSite = null;
@@ -735,6 +732,7 @@ function removeRadar() {
     if (radarFetchController) {
         radarFetchController.abort();
         radarFetchController = null;
+        radarInFlightParams = null;
     }
     setRadarSiteStatus("");
     setBottomRadarStatus("");
@@ -842,9 +840,7 @@ function updateRadarLayer(isAutomaticTick = false) {
         setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(radarProduct)} for ${radarSite}...`);
         radarNeedsInitialForce = false;
         radarActiveMode = "site";
-        loadRadarForSite(radarSite, null, forceNewest).then(() => {
-            startRadarAutoRefresh();
-        });
+        loadRadarForSite(radarSite, null, forceNewest);
         return;
     }
 
