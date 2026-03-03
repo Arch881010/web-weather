@@ -16,24 +16,40 @@
 			<p id="loading-screen-text">Loading, please wait...</p>
 		</div>
 		<div id="map"></div>
-		<div id="radar-colorbar" style="display:none">
+		<div id="radar-colorbar" style="display: none">
 			<canvas id="colorbar-canvas" width="500" height="14"></canvas>
 			<div id="colorbar-labels"></div>
-			<div id="colorbar-tooltip" style="display:none"></div>
+			<div id="colorbar-tooltip" style="display: none"></div>
 		</div>
 		<div id="bottom-status-bar">
 			<div class="bottom-status-left">
 				<div class="bottom-status-controls" aria-label="Radar quick controls">
-					<button id="open-settings" class="icon-control" title="Open settings" aria-label="Open settings">
+					<button
+						id="open-settings"
+						class="icon-control"
+						title="Open settings"
+						aria-label="Open settings">
 						<i class="fas fa-cog" aria-hidden="true"></i>
 					</button>
-					<button id="quick-radar-mode" class="icon-control" title="Open radar source setting" aria-label="Open radar source setting">
+					<button
+						id="quick-radar-mode"
+						class="icon-control"
+						title="Open radar source setting"
+						aria-label="Open radar source setting">
 						<i class="fas fa-satellite-dish" aria-hidden="true"></i>
 					</button>
-					<button id="quick-radar-product" class="icon-control" title="Open radar product setting" aria-label="Open radar product setting">
+					<button
+						id="quick-radar-product"
+						class="icon-control"
+						title="Open radar product setting"
+						aria-label="Open radar product setting">
 						<i class="fas fa-layer-group" aria-hidden="true"></i>
 					</button>
-					<button id="quick-radar-cmap" class="icon-control" title="Open radar color map setting" aria-label="Open radar color map setting">
+					<button
+						id="quick-radar-cmap"
+						class="icon-control"
+						title="Open radar color map setting"
+						aria-label="Open radar color map setting">
 						<i class="fas fa-palette" aria-hidden="true"></i>
 					</button>
 				</div>
@@ -189,16 +205,36 @@
 								<select id="radar-cmap">
 									<!-- Populated dynamically based on product -->
 								</select>
-								<button id="upload-cmap-btn" class="cmap-action-btn" title="Upload custom colormap (.pal)">
+								<button
+									id="upload-cmap-btn"
+									class="cmap-action-btn"
+									title="Upload custom colormap (.pal)">
 									<i class="fas fa-upload"></i>
 								</button>
-								<button id="export-cmap-btn" class="cmap-action-btn" title="Export selected colormap">
+
+								<button
+									id="export-cmap-btn"
+									class="cmap-action-btn"
+									title="Export selected colormap">
 									<i class="fas fa-download"></i>
 								</button>
-								<button id="delete-cmap-btn" class="cmap-action-btn cmap-delete-btn" title="Delete custom colormap">
+								<button
+									id="rename-cmap-btn"
+									class="cmap-action-btn"
+									title="Rename custom colormap">
+									<i class="fas fa-pen"></i>
+								</button>
+								<button
+									id="delete-cmap-btn"
+									class="cmap-action-btn cmap-delete-btn"
+									title="Delete custom colormap">
 									<i class="fas fa-trash"></i>
 								</button>
-										<input type="file" id="cmap-file-input" accept=".pal" style="display:none" />
+								<input
+									type="file"
+									id="cmap-file-input"
+									accept=".pal"
+									style="display: none" />
 							</div>
 						</div>
 					</div>
@@ -207,7 +243,9 @@
 						<div class="setting-item">
 							<label for="radar-hover-toggle">
 								Radar Hover Tooltip
-								<span class="info-icon" title="Show radar values when hovering (dBZ, m/s, classification, etc.)">
+								<span
+									class="info-icon"
+									title="Show radar values when hovering (dBZ, m/s, classification, etc.)">
 									<i class="fas fa-info-circle"></i>
 								</span>
 							</label>
@@ -218,11 +256,24 @@
 						<h3><i class="fas fa-map-marker-alt"></i> Markers</h3>
 						<div class="setting-item">
 							<label>Place Marker</label>
-							<span style="color:#aaa;font-size:0.85em;">Right-click on the map</span>
+							<span style="color: #aaa; font-size: 0.85em"
+								>Right-click on the map</span
+							>
 						</div>
 						<div class="setting-item">
 							<label for="clear-user-markers">Clear All Markers</label>
-							<button id="clear-user-markers" style="background:#c33;color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;">Clear</button>
+							<button
+								id="clear-user-markers"
+								style="
+									background: #c33;
+									color: #fff;
+									border: none;
+									padding: 4px 12px;
+									border-radius: 4px;
+									cursor: pointer;
+								">
+								Clear
+							</button>
 						</div>
 					</div>
 				</div>

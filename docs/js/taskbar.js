@@ -127,6 +127,31 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
+	// ── Colormap: rename custom colormap ──
+	const renameCmapBtn = document.getElementById("rename-cmap-btn");
+	if (renameCmapBtn) {
+		renameCmapBtn.addEventListener("click", async () => {
+			const cmapSelect = document.getElementById("radar-cmap");
+			const product = document.getElementById("radar-site-product")?.value || "reflectivity";
+			const colormapName = cmapSelect?.value;
+			if (!colormapName) return;
+			if (!isCustomColormap(product, colormapName)) {
+				alert("Only custom colormaps can be renamed.");
+				return;
+			}
+			const newName = await showRenameDialog(colormapName);
+			if (!newName || newName === colormapName) return;
+			if (renameCustomColormap(product, colormapName, newName)) {
+				updateColormapDropdown(product);
+				const cmapSel = document.getElementById("radar-cmap");
+				if (cmapSel) cmapSel.value = newName;
+				setColormapForProduct(product, newName);
+			} else {
+				alert("Failed to rename colormap.");
+			}
+		});
+	}
+
 	// ── Colormap: export selected custom colormap ──
 	const exportCmapBtn = document.getElementById("export-cmap-btn");
 	if (exportCmapBtn) {
@@ -146,7 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	// ── Colormap: delete custom colormap ──
 	const deleteCmapBtn = document.getElementById("delete-cmap-btn");
 	if (deleteCmapBtn) {
-		deleteCmapBtn.addEventListener("click", () => {
+		deleteCmapBtn.addEventListener("click", async () => {
 			const cmapSelect = document.getElementById("radar-cmap");
 			const product = document.getElementById("radar-site-product")?.value || "reflectivity";
 			const colormapName = cmapSelect?.value;
@@ -155,13 +180,13 @@ document.addEventListener("DOMContentLoaded", () => {
 				alert("Only custom colormaps can be deleted.");
 				return;
 			}
-			if (!confirm(`Delete custom colormap "${colormapName}"?`)) return;
+			const confirmed = await showConfirmDialog(`Delete custom colormap "${colormapName}"?`, "Delete Colormap");
+			if (!confirmed) return;
 			deleteCustomColormap(product, colormapName);
 			updateColormapDropdown(product);
 			// Re-apply default after deletion
 			const newCmap = document.getElementById("radar-cmap")?.value;
 			if (newCmap) setColormapForProduct(product, newCmap);
-			alert(`Colormap "${colormapName}" deleted.`);
 		});
 	}
 

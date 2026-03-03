@@ -304,6 +304,9 @@ function updateCountdown(force) {
 		timeLeft = window.timeUntilNextUpdate;
 		timeLeft -= 1;
 		if (countdownElement) {
+			if (timeLeft < 10) {
+				timeLeft = `0${timeLeft}`;
+			}
 			countdownElement.innerText = `Next update in: ${timeLeft}s`;
 		}
 

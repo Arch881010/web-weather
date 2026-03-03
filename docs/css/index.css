@@ -155,6 +155,7 @@ body.settings-open #radar-colorbar {
     overflow: visible;
     text-overflow: ellipsis;
     max-width: 100%;
+    font-variant-numeric: tabular-nums;
 }
 
 #radar-runtime-status {
@@ -896,4 +897,160 @@ input:focus {
 
 #marker-dialog-ok:hover {
     background: #3366dd;
+}
+
+/* ── Rename dialog overlay ── */
+#rename-dialog-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+
+#rename-dialog {
+    background: #1e1e1e;
+    color: #eee;
+    border-radius: 10px;
+    padding: 20px 24px;
+    width: 320px;
+    max-width: 92vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    font-family: inherit;
+}
+
+#rename-dialog-title {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.rename-dialog-label {
+    display: block;
+    font-size: 12px;
+    color: #aaa;
+    margin: 8px 0 4px;
+}
+
+#rename-dialog-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border: 1px solid #555;
+    border-radius: 5px;
+    background: #2a2a2a;
+    color: #fff;
+    font-size: 14px;
+}
+
+#rename-dialog-input:focus {
+    border-color: #4488ff;
+    outline: none;
+}
+
+#rename-dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+#rename-dialog-buttons button {
+    padding: 6px 18px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#rename-dialog-cancel {
+    background: #444;
+    color: #ccc;
+}
+
+#rename-dialog-cancel:hover {
+    background: #555;
+}
+
+#rename-dialog-ok {
+    background: #4488ff;
+    color: #fff;
+}
+
+#rename-dialog-ok:hover {
+    background: #3366dd;
+}
+
+/* ── Confirm dialog overlay ── */
+#confirm-dialog-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+}
+
+#confirm-dialog {
+    background: #1e1e1e;
+    color: #eee;
+    border-radius: 10px;
+    padding: 20px 24px;
+    width: 320px;
+    max-width: 92vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    font-family: inherit;
+}
+
+#confirm-dialog-title {
+    font-size: 16px;
+    font-weight: bold;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+#confirm-dialog-message {
+    font-size: 14px;
+    color: #ccc;
+    text-align: center;
+    margin: 12px 0 16px;
+}
+
+#confirm-dialog-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+#confirm-dialog-buttons button {
+    padding: 6px 18px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#confirm-dialog-cancel {
+    background: #444;
+    color: #ccc;
+}
+
+#confirm-dialog-cancel:hover {
+    background: #555;
+}
+
+#confirm-dialog-ok {
+    background: #e04040;
+    color: #fff;
+}
+
+#confirm-dialog-ok:hover {
+    background: #c03030;
 }

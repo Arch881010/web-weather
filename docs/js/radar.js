@@ -282,20 +282,34 @@ function exportColormap(product, colormapName) {
         throw new Error("Only custom colormaps can be exported.");
     }
 
-    const exportData = {
-        name: colormapName,
-        product: normalized,
-        type: cmapData.type,
-        stops: cmapData.stops,
-        exported: new Date().toISOString(),
-    };
-    if (cmapData.alpha != null) exportData.alpha = cmapData.alpha;
+    // Build .pal file content
+    const lines = [];
+    lines.push(`# ${colormapName}`);
+    lines.push(`# Product: ${normalized}`);
+    lines.push(`# Exported: ${new Date().toISOString()}`);
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    if (cmapData.type === "velocity") {
+        lines.push("Product: BV");
+        lines.push("Scale: 1.942");
+        // Velocity stops are normalized -1..1; convert back to display units
+        const absMax = Math.max(...cmapData.stops.map((s) => Math.abs(s[0])));
+        const normMax = absMax || 1;
+        for (const s of cmapData.stops) {
+            const displayVal = Math.round((s[0] / normMax) * 150);
+            lines.push(`Color: ${displayVal} ${s[1]} ${s[2]} ${s[3]}`);
+        }
+    } else {
+        for (const s of cmapData.stops) {
+            // s = [threshold, R, G, B, alpha?]
+            lines.push(`Color: ${s[0]} ${s[1]} ${s[2]} ${s[3]}`);
+        }
+    }
+
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${colormapName}_${normalized}.json`;
+    a.download = `${colormapName}.pal`;
     a.click();
     URL.revokeObjectURL(url);
 }
@@ -311,9 +325,148 @@ function deleteCustomColormap(product, colormapName) {
     return false;
 }
 
+function renameCustomColormap(product, oldName, newName) {
+    const normalized = normalizeRadarProduct(product);
+    if (!customColormaps[normalized] || !customColormaps[normalized][oldName]) {
+        return false;
+    }
+    if (oldName === newName) return true;
+    const cmapData = customColormaps[normalized][oldName];
+    delete customColormaps[normalized][oldName];
+    unregisterCustomColormap(oldName);
+    customColormaps[normalized][newName] = cmapData;
+    registerCustomColormap(newName, cmapData);
+    saveCustomColormaps();
+    return true;
+}
+
 function isCustomColormap(product, colormapName) {
     const normalized = normalizeRadarProduct(product);
     return !!(customColormaps[normalized] && customColormaps[normalized][colormapName]);
+}
+
+// ── Rename dialog UI ──
+function _createRenameDialog() {
+    let overlay = document.getElementById("rename-dialog-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "rename-dialog-overlay";
+    overlay.innerHTML = `
+        <div id="rename-dialog">
+            <div id="rename-dialog-title">Rename Colormap</div>
+            <label class="rename-dialog-label">New Name</label>
+            <input type="text" id="rename-dialog-input" maxlength="60" placeholder="Enter new name" />
+            <div id="rename-dialog-buttons">
+                <button id="rename-dialog-cancel">Cancel</button>
+                <button id="rename-dialog-ok">Rename</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+/**
+ * Show a rename dialog. Returns a Promise that resolves with the new name string, or null if cancelled.
+ */
+function showRenameDialog(currentName) {
+    return new Promise((resolve) => {
+        const overlay = _createRenameDialog();
+        const input = document.getElementById("rename-dialog-input");
+        const okBtn = document.getElementById("rename-dialog-ok");
+        const cancelBtn = document.getElementById("rename-dialog-cancel");
+
+        input.value = currentName || "";
+
+        function cleanup() {
+            overlay.style.display = "none";
+            okBtn.removeEventListener("click", onOk);
+            cancelBtn.removeEventListener("click", onCancel);
+            overlay.removeEventListener("click", onOverlayClick);
+            document.removeEventListener("keydown", onKey);
+        }
+
+        function onOk() {
+            const val = input.value.trim();
+            cleanup();
+            resolve(val || null);
+        }
+        function onCancel() { cleanup(); resolve(null); }
+        function onOverlayClick(e) { if (e.target === overlay) { cleanup(); resolve(null); } }
+        function onKey(e) {
+            if (e.key === "Escape") { cleanup(); resolve(null); }
+            if (e.key === "Enter") onOk();
+        }
+
+        okBtn.addEventListener("click", onOk);
+        cancelBtn.addEventListener("click", onCancel);
+        overlay.addEventListener("click", onOverlayClick);
+        document.addEventListener("keydown", onKey);
+
+        overlay.style.display = "flex";
+        input.focus();
+        input.select();
+    });
+}
+
+// ── Confirm dialog UI ──
+function _createConfirmDialog() {
+    let overlay = document.getElementById("confirm-dialog-overlay");
+    if (overlay) return overlay;
+
+    overlay = document.createElement("div");
+    overlay.id = "confirm-dialog-overlay";
+    overlay.innerHTML = `
+        <div id="confirm-dialog">
+            <div id="confirm-dialog-title">Confirm</div>
+            <div id="confirm-dialog-message"></div>
+            <div id="confirm-dialog-buttons">
+                <button id="confirm-dialog-cancel">Cancel</button>
+                <button id="confirm-dialog-ok">Delete</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
+/**
+ * Show a confirm dialog. Returns a Promise that resolves with true (confirmed) or false (cancelled).
+ */
+function showConfirmDialog(message, title = "Confirm") {
+    return new Promise((resolve) => {
+        const overlay = _createConfirmDialog();
+        const titleEl = document.getElementById("confirm-dialog-title");
+        const msgEl = document.getElementById("confirm-dialog-message");
+        const okBtn = document.getElementById("confirm-dialog-ok");
+        const cancelBtn = document.getElementById("confirm-dialog-cancel");
+
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+
+        function cleanup() {
+            overlay.style.display = "none";
+            okBtn.removeEventListener("click", onOk);
+            cancelBtn.removeEventListener("click", onCancel);
+            overlay.removeEventListener("click", onOverlayClick);
+            document.removeEventListener("keydown", onKey);
+        }
+
+        function onOk() { cleanup(); resolve(true); }
+        function onCancel() { cleanup(); resolve(false); }
+        function onOverlayClick(e) { if (e.target === overlay) { cleanup(); resolve(false); } }
+        function onKey(e) {
+            if (e.key === "Escape") { cleanup(); resolve(false); }
+            if (e.key === "Enter") { cleanup(); resolve(true); }
+        }
+
+        okBtn.addEventListener("click", onOk);
+        cancelBtn.addEventListener("click", onCancel);
+        overlay.addEventListener("click", onOverlayClick);
+        document.addEventListener("keydown", onKey);
+
+        overlay.style.display = "flex";
+        cancelBtn.focus();
+    });
 }
 
 function setRadarSiteStatus(message) {
@@ -337,7 +490,7 @@ function _formatScanTime(sweepData) {
     if (sweepData && sweepData.scanTime) {
         try {
             return new Date(sweepData.scanTime).toLocaleTimeString();
-        } catch (_) {}
+        } catch (_) { }
     }
     return new Date().toLocaleTimeString();
 }
@@ -479,7 +632,7 @@ function handleRepeatedRadarSiteFailure(site, error) {
         radarSiteFailureNotified.add(site);
         try {
             window.alert(message);
-        } catch (_) {}
+        } catch (_) { }
     }
 
     if (!config.radarApi) config.radarApi = {};
