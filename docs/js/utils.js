@@ -620,8 +620,10 @@ function drawPolygons(data) {
 }
 
 function redrawPolygons() {
-	if (current_features.length <= 0) updateWeatherAlerts();
-	else drawPolygons(current_features);
+	try {
+		if (current_features.length <= 0) updateWeatherAlerts();
+		else drawPolygons(current_features);
+	} catch (e) {}
 }
 
 function getSevereStorm(feature) {
