@@ -785,7 +785,6 @@ function isPointInPolygon(lat, lng, polygon) {
 // Queue for TTS messages
 window.ttsQueue = window.ttsQueue || [];
 window.isSpeaking = window.isSpeaking || false;
-window.ttsInitialBatchDone = window.ttsInitialBatchDone || false; // flips after first spoken alert
 
 // Cache of alerts already spoken: Set of "markerName|alertId" strings
 window.spokenAlerts = window.spokenAlerts || new Set();
@@ -822,13 +821,11 @@ function _processTTSQueue() {
 	utterance.volume = 1;
 
 	utterance.onend = () => {
-		window.ttsInitialBatchDone = true;
 		window.isSpeaking = false;
 		_processTTSQueue();
 	};
 
 	utterance.onerror = () => {
-		window.ttsInitialBatchDone = true;
 		window.isSpeaking = false;
 		_processTTSQueue();
 	};
@@ -847,10 +844,7 @@ function playSound(markerName, textToSpeak) {
 	}
 
 	// Queue the message
-	const initialBatch = !window.ttsInitialBatchDone;
-	const message = initialBatch
-		? `${markerName} is in a ${textToSpeak}`
-		: `${markerName} is in a new or updated ${textToSpeak}`;
+	const message = `${markerName} is in a ${textToSpeak}`;
 	window.ttsQueue.push(message);
 
 	// (Chrome autoplay policy)
