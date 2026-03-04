@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Wed Mar  4 02:42:52 UTC 2026",
-    "recent-commit": "(Fix): Fixes SVR TSTM Warnings (closes #36)"
+    "time-updated": "Wed Mar  4 02:52:34 UTC 2026",
+    "recent-commit": "(Fix): Marker drift (Radar & User)"
 }
