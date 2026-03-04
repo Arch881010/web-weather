@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Tue Mar  3 04:24:59 UTC 2026",
-    "recent-commit": "(Fix): Exporting Colormap exports as .pal, added renaming of custom .pal, countdown always has two places"
+    "time-updated": "Wed Mar  4 02:35:54 UTC 2026",
+    "recent-commit": "(Feat): Add audio for markers in warning, disabled by default, also fixed some stingy bugs (#35)"
 }
