@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Wed Mar  4 21:42:45 UTC 2026",
-    "recent-commit": "(Fix): Saving settings before alerts load leads to a freeze/soft lock."
+    "time-updated": "Wed Mar  4 23:28:40 UTC 2026",
+    "recent-commit": "(Feat): Add notifications in the corner"
 }
