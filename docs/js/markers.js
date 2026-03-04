@@ -14,7 +14,7 @@ async function addRadarMarkers() {
             className: `radar`,
             html: radarName,
             iconSize: [40, 20],
-            iconAnchor: [20, 10]
+            iconAnchor: [20, 20]
         });
         var marker = L.marker(coordinates, { icon: radarIcon }).addTo(map);
         marker.on("click", (e) => {
@@ -246,7 +246,7 @@ function drawUserMarkers() {
             className: "user-marker",
             html: `<i class="fas ${fa}" style="color:${m.color || '#ff4444'};font-size:14px;"></i>`,
             iconSize: [14, 20],
-            iconAnchor: [7, 20],
+            iconAnchor: [7, 10],
         });
         const layer = L.marker([m.lat, m.lng], { icon })
             .addTo(map)
