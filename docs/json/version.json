@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Wed Mar  4 17:07:11 UTC 2026",
-    "recent-commit": "(Feat): Added setting where you can have counties showed all the time"
+    "time-updated": "Wed Mar  4 21:35:22 UTC 2026",
+    "recent-commit": "(Fix): Watches don't have 'N/A' in speaking part."
 }
