@@ -352,15 +352,15 @@ function drawPolygons(data) {
 		if (typeof tag != "string") {
 			try {
 				tag = tag[0];
-			} catch (e) {}
+			} catch (e) { }
 		}
 
 		if (config.dev.status === true) {
 			console.log(
 				"Got data for tag: " +
-					tag +
-					" or as JSON.stringify(): " +
-					JSON.stringify(tag)
+				tag +
+				" or as JSON.stringify(): " +
+				JSON.stringify(tag)
 			);
 		}
 
@@ -368,9 +368,9 @@ function drawPolygons(data) {
 			if (config.dev.status === true) {
 				console.warn(
 					"Previous data is not proper. Received type " +
-						typeof tag +
-						" when expected string. JSON.stringify() " +
-						JSON.stringify(tag)
+					typeof tag +
+					" when expected string. JSON.stringify() " +
+					JSON.stringify(tag)
 				);
 			}
 			continue;
@@ -382,7 +382,7 @@ function drawPolygons(data) {
 
 		try {
 			torCert = feature.properties.parameters.tornadoDetection[0];
-		} catch (e) {}
+		} catch (e) { }
 
 		const allTags = ["considerable", "catastrophic", "destructive"];
 		if (!allTags.includes(tag) && eventName.includes("tornado")) {
@@ -393,6 +393,7 @@ function drawPolygons(data) {
 
 		let newFeature = structuredClone(feature);
 		let pushFeature = false;
+		feature.properties.newName = `${tag.toTitleCase()} ${feature.properties.event}`;
 		if (eventName.includes("tornado")) {
 			switch (tag) {
 				case "considerable":
@@ -476,7 +477,7 @@ function drawPolygons(data) {
 			}
 
 			layer.on("popupopen", function () {
-				console.log("Popup opened for feature:", feature);
+				// console.log("Popup opened for feature:", JSON.stringify(feature));
 				window.cachedAlertText = getAlertText(feature);
 			});
 		},
@@ -500,6 +501,42 @@ function drawPolygons(data) {
 	})
 		.addTo(map)
 		.bringToFront();
+
+	let markers = getAllUserMarkerPoints();
+
+	// Collect current alert IDs to prune stale spoken alerts
+	const currentAlertIds = new Set();
+
+	for (let al of data.features) {
+		try {
+			if (!al.geometry || !al.geometry.coordinates) continue;
+			let coordinates = al.geometry.coordinates[0];
+			if (!coordinates) continue;
+			const alertId = al.properties.id || al.id || al.properties.newName;
+			for (let key of Object.keys(markers)) {
+				const cacheKey = `${key}|${alertId}`;
+				currentAlertIds.add(cacheKey);
+				let lat = markers[key]["lat"];
+				let lng = markers[key]["lng"];
+				if (isPointInPolygon(lat, lng, coordinates)) {
+					if (!window.spokenAlerts.has(cacheKey)) {
+						console.log(`${key} is inside ${al.properties.newName}`);
+						playSound(key, al.properties.newName);
+						window.spokenAlerts.add(cacheKey);
+					}
+				}
+			}
+		} catch (e) {
+			console.error(e);
+		}
+	}
+
+	// Remove spoken alerts that no longer exist in current data
+	for (const key of window.spokenAlerts) {
+		if (!currentAlertIds.has(key)) {
+			window.spokenAlerts.delete(key);
+		}
+	}
 }
 
 function redrawPolygons() {
@@ -564,7 +601,7 @@ function getSevereStorm(feature) {
 			params.parameters.hail.maxHail != "N/A"
 		) {
 			params.parameters.hail.maxHail += '"';
-		} 
+		}
 
 		return params;
 	} catch (e) {
@@ -658,4 +695,102 @@ function dev(preset) {
 			break;
 	}
 	window.timeUntilNextUpdate = 1;
+}
+
+function isPointInPolygon(lat, lng, polygon) {
+	let inside = false;
+
+	for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+		const xi = polygon[i][0]; // lng
+		const yi = polygon[i][1]; // lat
+		const xj = polygon[j][0]; // lng
+		const yj = polygon[j][1]; // lat
+
+		const intersect =
+			yi > lat !== yj > lat &&
+			lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+
+		if (intersect) inside = !inside;
+	}
+
+	return inside;
+}
+
+// Queue for TTS messages
+window.ttsQueue = window.ttsQueue || [];
+window.isSpeaking = window.isSpeaking || false;
+
+// Cache of alerts already spoken: Set of "markerName|alertId" strings
+window.spokenAlerts = window.spokenAlerts || new Set();
+
+// Track whether the user has interacted with the page (required by Chrome autoplay policy)
+window.userHasInteracted = window.userHasInteracted || false;
+(function () {
+	if (window.userHasInteracted) return;
+	const events = ["click", "touchstart", "keydown"];
+	function onInteract() {
+		window.userHasInteracted = true;
+		events.forEach((e) => document.removeEventListener(e, onInteract, true));
+		// Process any queued messages that were waiting for interaction
+		if (window.ttsQueue.length > 0) {
+			_processTTSQueue();
+		}
+	}
+	events.forEach((e) => document.addEventListener(e, onInteract, true));
+})();
+
+/**
+ * Process the TTS message queue — speaks queued messages one at a time.
+ * Called after audio ends or when the user first interacts with the page.
+ */
+function _processTTSQueue() {
+	if (window.isSpeaking || window.ttsQueue.length === 0) return;
+
+	window.isSpeaking = true;
+	const msg = window.ttsQueue.shift();
+
+	const utterance = new SpeechSynthesisUtterance(msg);
+	utterance.rate = 1;
+	utterance.pitch = 1;
+	utterance.volume = 1;
+
+	utterance.onend = () => {
+		window.isSpeaking = false;
+		_processTTSQueue();
+	};
+
+	utterance.onerror = () => {
+		window.isSpeaking = false;
+		_processTTSQueue();
+	};
+
+	speechSynthesis.speak(utterance);
+}
+
+function playSound(markerName, textToSpeak) {
+	// Check if alert sound is enabled
+	if (!config.alertSound) return;
+
+	// Check if speech synthesis is supported
+	if (!("speechSynthesis" in window)) {
+		console.warn("Text-to-Speech not supported in this browser");
+		return;
+	}
+
+	// Queue the message
+	const message = `${markerName} is in a ${textToSpeak}`;
+	window.ttsQueue.push(message);
+
+	// (Chrome autoplay policy)
+	if (!window.userHasInteracted) {
+		console.info("Queued TTS — waiting for user interaction before playback.");
+		return;
+	}
+
+	// Play the EAS end tone audio file, then process the TTS queue
+	const audio = new Audio("./audio/eas_end_tone.mp4");
+	audio.volume = 0.3;
+	audio.play().catch((e) => console.warn("Audio playback failed:", e));
+
+	audio.onended = () => _processTTSQueue();
 }

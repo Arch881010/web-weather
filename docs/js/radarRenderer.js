@@ -447,8 +447,8 @@ const RadarCanvasLayer = L.GridLayer.extend({
             minZoom: 3,
             maxZoom: 18,
             tileSize: 256,
-            updateWhenZooming: false,
-            updateWhenIdle: true,
+            updateWhenZooming: true,
+            updateWhenIdle: false,
             zIndex: 500,
             id: "radar-layer",
         }, options || {});

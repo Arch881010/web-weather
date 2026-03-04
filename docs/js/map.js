@@ -5,7 +5,8 @@ const map = L.map("map", {
 	zoomAnimation: true,
 	fadeAnimation: false,
 	markerZoomAnimation: true,
-}).setView([39.8283, -98.5795], 5); // Centered on the US
+	minZoom: 6,
+}).setView([39.8283, -98.5795], 6); // Centered on the US
 
 map.on('zoomend', addCountyBorders);
 
