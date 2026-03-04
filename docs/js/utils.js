@@ -857,8 +857,11 @@ function playSound(markerName, textToSpeak) {
 		return;
 	}
 
+	let output = (textToSpeak.replace("N/a", "")).trim();
+
 	// Queue the message
-	const message = `${markerName} is in a ${textToSpeak}`;
+	console.log(output);
+	const message = `${markerName} is in a ${output}`;
 	window.ttsQueue.push(message);
 
 	// (Chrome autoplay policy)
