@@ -221,7 +221,7 @@ function _userMarkerPopup(marker, idx) {
     const fa = _getIconFA(marker.icon);
     return `
         <div style="text-align:center">
-            <i class="fas ${fa}" style="color:${marker.color || '#ff4444'};font-size:18px;margin-bottom:4px;"></i><br>
+            <i class="fas ${fa}" style="color:${marker.color || '#ff4444'};font-size:14px;margin-bottom:4px;"></i><br>
             <strong>${marker.name}</strong><br>
             <small>${marker.lat.toFixed(5)}, ${marker.lng.toFixed(5)}</small><br>
             <button class="user-marker-rename" data-idx="${idx}"
@@ -244,9 +244,9 @@ function drawUserMarkers() {
         const fa = _getIconFA(m.icon);
         const icon = L.divIcon({
             className: "user-marker",
-            html: `<i class="fas ${fa}" style="color:${m.color || '#ff4444'};font-size:22px;"></i>`,
-            iconSize: [22, 28],
-            iconAnchor: [11, 28],
+            html: `<i class="fas ${fa}" style="color:${m.color || '#ff4444'};font-size:14px;"></i>`,
+            iconSize: [14, 20],
+            iconAnchor: [7, 20],
         });
         const layer = L.marker([m.lat, m.lng], { icon })
             .addTo(map)
@@ -314,4 +314,16 @@ async function addUserMarkers() {
 async function addAllMarkers() {
     addRadarMarkers();
     addUserMarkers();
+}
+
+function getAllUserMarkerPoints() {
+    // Example data [{"lat":37.19533058280065,"lng":-92.28515625000001,"name":"My Marker","icon":"bolt","color":"#aa44ff"}]
+    const data = _loadUserMarkers();
+    let objData = {};
+
+    for (arr of data) {
+        objData[arr["name"]] = {"lat":arr["lat"], "lng": arr["lng"]};
+    }
+
+    return objData
 }

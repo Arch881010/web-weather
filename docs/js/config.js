@@ -10,6 +10,7 @@ const default_config = {
 	show: {
 		watches: true,
 	},
+	alertSound: false,
 	radarTilemap: "n0q",
 	dev: {
 		"status": false,
@@ -88,6 +89,11 @@ const loadSettings = () => {
 	document.getElementById("radar-site-product").value =
 		savedSettings.radarApi.product || "reflectivity";
 
+	// Alert sound toggle
+	const alertSoundPref = savedSettings.alertSound === true;
+	const alertSoundToggle = document.getElementById("alert-sound-toggle");
+	if (alertSoundToggle) alertSoundToggle.checked = alertSoundPref;
+
 	// Radar hover tooltip toggle
 	const hoverPref = savedSettings.radarHoverEnabled === true;
 	const hoverToggle = document.getElementById("radar-hover-toggle");
@@ -114,6 +120,7 @@ const loadSettings = () => {
 	};
 
 	config.show.watches = true;
+	config.alertSound = alertSoundPref;
 	return savedSettings;
 };
 
@@ -153,6 +160,10 @@ const saveSettings = () => {
 	config.radarApi.product = radarSiteProduct;
 	config.radarApi.level = radarDataLevel;
 	config.radarApi.cmap = radarCmap;
+
+	// Alert sound preference
+	const alertSoundToggle = document.getElementById("alert-sound-toggle");
+	config.alertSound = alertSoundToggle ? alertSoundToggle.checked : false;
 
 	// Radar hover tooltip preference
 	const hoverToggle = document.getElementById("radar-hover-toggle");
