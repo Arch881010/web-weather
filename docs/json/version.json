@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Wed Mar  4 02:35:54 UTC 2026",
-    "recent-commit": "(Feat): Add audio for markers in warning, disabled by default, also fixed some stingy bugs (#35)"
+    "time-updated": "Wed Mar  4 02:42:52 UTC 2026",
+    "recent-commit": "(Fix): Fixes SVR TSTM Warnings (closes #36)"
 }
