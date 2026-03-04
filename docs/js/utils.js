@@ -849,6 +849,40 @@ function _processTTSQueue() {
 	speechSynthesis.speak(utterance);
 }
 
+function showNotification(prefix, alertName, color, duration = 5000) {
+	const container = document.getElementById("notification-container");
+	if (!container) return;
+
+	const toast = document.createElement("div");
+	toast.className = "notification-toast";
+	if (color) toast.style.setProperty("--toast-color", color);
+
+	const msg = document.createElement("span");
+	msg.textContent = prefix;
+
+	const coloredPart = document.createElement("span");
+	coloredPart.textContent = alertName;
+	if (color) coloredPart.style.color = color;
+
+	const closeBtn = document.createElement("button");
+	closeBtn.className = "notification-toast-close";
+	closeBtn.innerHTML = "&#x2715;";
+	closeBtn.onclick = () => dismissToast(toast);
+
+	toast.appendChild(msg);
+	toast.appendChild(coloredPart);
+	toast.appendChild(closeBtn);
+	container.appendChild(toast);
+
+	setTimeout(() => dismissToast(toast), duration);
+}
+
+function dismissToast(toast) {
+	if (toast.classList.contains("toast-out")) return;
+	toast.classList.add("toast-out");
+	toast.addEventListener("transitionend", () => toast.remove());
+}
+
 function playSound(markerName, textToSpeak) {
 	// Check if alert sound is enabled
 	if (!config.alertSound) return;
@@ -864,6 +898,7 @@ function playSound(markerName, textToSpeak) {
 	// Queue the message
 	console.log(output);
 	const message = `${markerName} is in a ${output}`;
+	showNotification(`${markerName} is in a `, output, getColor(output));
 	window.ttsQueue.push(message);
 
 	// (Chrome autoplay policy)
@@ -879,3 +914,4 @@ function playSound(markerName, textToSpeak) {
 
 	audio.onended = () => _processTTSQueue();
 }
+

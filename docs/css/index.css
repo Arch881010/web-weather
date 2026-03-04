@@ -1071,3 +1071,71 @@ input:focus {
 #confirm-dialog-ok:hover {
     background: #c03030;
 }
+
+#notification-container {
+    position: fixed;
+    bottom: 70px;
+    right: 16px;
+    z-index: 10002;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.notification-toast {
+    pointer-events: auto;
+    min-width: 240px;
+    max-width: 360px;
+    padding: 10px 36px 10px 14px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(10px);
+    border-left: 4px solid var(--toast-color, #fff);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    animation: toast-in 0.3s ease forwards;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    position: relative;
+}
+
+.notification-toast-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.8);
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.notification-toast-close:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.notification-toast.toast-out {
+    opacity: 0;
+    transform: translateX(30px);
+}
+
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
