@@ -37,7 +37,8 @@ jobs:
       - name: Get recent commit message
         id: get_commit
         run: |
-          RECENT_COMMIT=$(git log -1 --pretty=%B | head -n 1)
+          # Replace any double quotes in the commit message with single quotes to keep JSON valid
+          RECENT_COMMIT=$(git log -1 --pretty=%B | head -n 1 | tr '"' "'")
           echo "RECENT_COMMIT=$RECENT_COMMIT" >> $GITHUB_ENV
 
       - name: Generate version.json
@@ -70,6 +71,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Pull me
+        run: |
+          git pull
+          echo "Why?"
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
