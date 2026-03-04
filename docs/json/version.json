@@ -1,5 +1,5 @@
 {
     "number": "0.3",
-    "time-updated": "Wed Mar  4 21:35:22 UTC 2026",
-    "recent-commit": "(Fix): Watches don't have 'N/A' in speaking part."
+    "time-updated": "Wed Mar  4 21:42:45 UTC 2026",
+    "recent-commit": "(Fix): Saving settings before alerts load leads to a freeze/soft lock."
 }
