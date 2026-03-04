@@ -5,8 +5,9 @@ const default_config = {
 		radar: 0.5,
 		polygon_fill: 0,
 		polygon: 1,
-		countyBorders: 0.1,
+		countyBorders: 0.01,
 	},
+	countyBordersZoomOnly: false,
 	show: {
 		watches: true,
 	},
@@ -71,6 +72,9 @@ const loadSettings = () => {
 		savedSettings.opacity.polygon * 100;
 	document.getElementById("opacity-county-borders").value =
 		savedSettings.opacity.countyBorders * 100;
+
+	const countyZoomToggle = document.getElementById("county-borders-zoom-toggle");
+	if (countyZoomToggle) countyZoomToggle.checked = !!savedSettings.countyBordersZoomOnly;
 	document.getElementById("radar-tilemap").value =
 		savedSettings.radarTilemap;
 	document.getElementById("radar-mode").value =
@@ -113,6 +117,7 @@ const loadSettings = () => {
 	config.opacity.polygon_fill = savedSettings.opacity.polygon_fill;
 	config.opacity.polygon = savedSettings.opacity.polygon;
 	config.opacity.countyBorders = savedSettings.opacity.countyBorders;
+	config.countyBordersZoomOnly = !!savedSettings.countyBordersZoomOnly;
 	config.radarTilemap = savedSettings.radarTilemap;
 	config.radarApi = {
 		...default_config.radarApi,
@@ -135,6 +140,8 @@ const saveSettings = () => {
 	const opacityPolygon = document.getElementById("opacity-polygon").value / 100;
 	const opacityCountyBorders =
 		document.getElementById("opacity-county-borders").value / 100;
+	const countyBordersZoomOnly =
+		document.getElementById("county-borders-zoom-toggle").checked === true;
 	const radarTilemap = document.getElementById("radar-tilemap").value;
 	const radarMode = document.getElementById("radar-mode").value;
 	const radarSite =
@@ -154,6 +161,7 @@ const saveSettings = () => {
 	config.opacity.polygon_fill = opacityPolygonFill;
 	config.opacity.polygon = opacityPolygon;
 	config.opacity.countyBorders = opacityCountyBorders;
+	config.countyBordersZoomOnly = countyBordersZoomOnly;
 	config.radarTilemap = radarTilemap;
 	config.radarApi.mode = radarMode;
 	config.radarApi.site = radarSite;

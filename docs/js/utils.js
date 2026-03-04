@@ -174,7 +174,10 @@ if (config.dev.status) {
 window.countyBordersShown = false;
 
 async function fetchCountyBorders() {
+	// Cache once so repeated calls don't re-fetch
+	if (counties) return counties;
 	counties = await (await fetch("./json/counties.json")).json();
+	return counties;
 }
 
 function getZoom() {
@@ -185,38 +188,49 @@ function getZoom() {
 	}
 }
 
-function addCountyBorders() {
-	// If the zoom is < 9, that means we are zoomed out and can hide the county borders
-	if (getZoom() < 9) {
+window.countyBordersShown = true;
+
+async function addCountyBorders() {
+	if (!counties) {
+		try {
+			await fetchCountyBorders();
+		} catch (e) {
+			console.warn("Unable to load county borders:", e);
+			return;
+		}
+	}
+
+	if (config.countyBordersZoomOnly && getZoom() < 9) {
 		if (countyBordersLayer) {
 			map.removeLayer(countyBordersLayer);
 			countyBordersLayer = null;
 			console.info("Hiding county borders.");
 		}
 		window.countyBordersShown = false;
-	} else {
-		if (!countyBordersLayer) {
-			countyBordersLayer = L.geoJSON(counties, {
-				style: {
-					color: getColor("county"), // Light gray for border color
-					weight: 3 * (map.getZoom() / 9), // Border width
-					opacity: config.opacity.countyBorders, // low opacity
-					fillOpacity: 0, // Make the polygon fill transparent
-				},
-				id: "county-borders",
-				interactive: false,
-			})
-				.addTo(map)
-				.bringToFront();
-			console.info("Showing county borders.");
-		} else {
-			countyBordersLayer.setStyle({
-				opacity: config.opacity.countyBorders,
-				weight: 3 * (map.getZoom() / 9),
-			});
-		}
-		window.countyBordersShown = true;
+		return;
 	}
+	if (!countyBordersLayer) {
+		countyBordersLayer = L.geoJSON(counties, {
+			style: {
+				color: getColor("county"), // Light gray for border color
+				weight: 3 * (map.getZoom() / 9), // Border width
+				opacity: config.opacity.countyBorders, // low opacity
+				fillOpacity: 0, // Make the polygon fill transparent
+			},
+			id: "county-borders",
+			interactive: false,
+		})
+			.addTo(map)
+			.bringToFront();
+		console.info("Showing county borders.");
+	} else {
+		countyBordersLayer.setStyle({
+			opacity: config.opacity.countyBorders,
+			weight: 3 * (map.getZoom() / 9),
+		});
+		countyBordersLayer.bringToFront();
+	}
+	window.countyBordersShown = true;
 }
 
 // Function to format the expiration time

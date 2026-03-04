@@ -21,7 +21,7 @@ document.addEventListener("visibilitychange", () => {
 	forceUpdate();
 });
 
-document.addEventListener("mapLoaded", () => {
+document.addEventListener("mapLoaded", async () => {
 	// Copilot
 	// Adds ease-out transition to the loading screen then removes it.
 	const loadingScreen = document.getElementById("loading-screen");
@@ -43,8 +43,8 @@ document.addEventListener("mapLoaded", () => {
 				data["recent-commit"];
 		});
 	updateRadarLayer();
+	await fetchCountyBorders();
 	addCountyBorders();
-	fetchCountyBorders();
 	addAllMarkers();
 
 	updateWeatherAlerts();
