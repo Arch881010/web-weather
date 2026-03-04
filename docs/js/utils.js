@@ -434,11 +434,13 @@ function drawPolygons(data) {
 		// alertExtras.features.push(feature);
 		// if (pushFeature) alertBackgrounds.features.push(newFeature);
 		feature.properties.size = {};
+		feature.properties.tag = tag;
 		if (pushFeature) {
 			feature.properties.size.border = size + change;
 			feature.properties.size.polygon = size;
-			feature.properties.size.extra = size - change;
+			feature.properties.size.extra = tag === "considerable" ? 1 : size - change;
 			newFeature.properties.size = feature.properties.size;
+			newFeature.properties.tag = tag;
 			alertExtras.features.push(newFeature);
 		} else {
 			feature.properties.size.border = size;
