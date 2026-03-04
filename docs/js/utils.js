@@ -324,6 +324,38 @@ function drawPolygons(data) {
 	const size = 4;
 	const change = 2;
 
+	// Pick a single highest-priority alert per marker+event to avoid repeat TTS
+	function getAlertPriority(eventType, tag) {
+		const evt = (eventType || "").toLowerCase();
+		const tg = (tag || "").toLowerCase();
+
+		if (evt.includes("severe th")) {
+			// Catastrophic/Destructive > Considerable > Base
+			if (tg === "catastrophic" || tg === "destructive") return 3;
+			if (tg === "considerable") return 2;
+			return 1;
+		}
+
+		if (evt.includes("tornado")) {
+			// Catastrophic > Considerable > Observed > Base
+			if (tg === "catastrophic") return 4;
+			if (tg === "considerable") return 3;
+			if (tg === "observed") return 2;
+			return 1;
+		}
+
+		// Default priority for everything else
+		return 1;
+	}
+
+	// Keep watches and warnings separate when deduping
+	function dedupeCategory(eventType) {
+		const evt = (eventType || "").toLowerCase();
+		if (evt.includes("watch")) return `watch:${eventType}`;
+		if (evt.includes("warning")) return `warning:${eventType}`;
+		return `other:${eventType}`;
+	}
+
 	// Always clear previous alert layers so expired alerts disappear
 	clearLayers([
 		"weather-alerts",
@@ -506,6 +538,10 @@ function drawPolygons(data) {
 
 	let markers = getAllUserMarkerPoints();
 
+	// Track best alert per marker+event (to speak once) and all cache keys (to mark as spoken)
+	const bestAlertsByMarkerEvent = new Map(); // key: "marker|event" -> { priority, markerName, alertName, cacheKey }
+	const allCacheKeysByMarkerEvent = new Map(); // key: "marker|event" -> Set(cacheKey)
+
 	// Collect current alert IDs to prune stale spoken alerts
 	const currentAlertIds = new Set();
 
@@ -521,15 +557,43 @@ function drawPolygons(data) {
 				let lat = markers[key]["lat"];
 				let lng = markers[key]["lng"];
 				if (isPointInPolygon(lat, lng, coordinates)) {
-					if (!window.spokenAlerts.has(cacheKey)) {
-						console.log(`${key} is inside ${al.properties.newName}`);
-						playSound(key, al.properties.newName);
-						window.spokenAlerts.add(cacheKey);
+					const eventType = convertToText(al.properties.event);
+					const tagValue = al.properties.tag || "";
+					const priority = getAlertPriority(eventType, tagValue);
+						const dedupeKey = `${key}|${dedupeCategory(eventType)}`;
+
+					if (!allCacheKeysByMarkerEvent.has(dedupeKey)) {
+						allCacheKeysByMarkerEvent.set(dedupeKey, new Set());
+					}
+					allCacheKeysByMarkerEvent.get(dedupeKey).add(cacheKey);
+
+					const existing = bestAlertsByMarkerEvent.get(dedupeKey);
+					if (!existing || priority > existing.priority) {
+						bestAlertsByMarkerEvent.set(dedupeKey, {
+							priority,
+							markerName: key,
+							alertName: al.properties.newName,
+							cacheKey,
+						});
 					}
 				}
 			}
 		} catch (e) {
 			console.error(e);
+		}
+	}
+
+	// Speak only the highest-priority alert per marker+event; mark all duplicates as spoken
+	for (const [dedupeKey, best] of bestAlertsByMarkerEvent.entries()) {
+		if (!window.spokenAlerts.has(best.cacheKey)) {
+			console.log(`${best.markerName} is inside ${best.alertName}`);
+			playSound(best.markerName, best.alertName);
+		}
+	}
+
+	for (const cacheSet of allCacheKeysByMarkerEvent.values()) {
+		for (const key of cacheSet) {
+			window.spokenAlerts.add(key);
 		}
 	}
 
