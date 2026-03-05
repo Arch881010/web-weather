@@ -9,7 +9,7 @@ let radarActiveMode = null;
 let radarFetchController = null; // AbortController for in-flight fetch
 let radarInFlightParams = null; // { site, product, level } of the current in-flight fetch
 const RADAR_SWEEP_CACHE = new Map(); // browser-side sweep data cache
-const RADAR_SWEEP_CACHE_TTL_MS = 1 * 60 * 1000; // 1 minutes
+const RADAR_SWEEP_CACHE_TTL_MS = 0.5 * 60 * 1000; // 30 s
 const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
@@ -678,7 +678,22 @@ function updateSelectedRadarLabel(site) {
     }
 }
 
-// ── Client-side canvas rendering from sweep data (Attic Radar style) ──
+async function fetchSweepInfo(site, signal = null) {
+    const radarApi = getRadarApiConfig();
+    const base = radarApi.base;
+    const product = normalizeRadarProduct(radarApi.product || "reflectivity");
+    const level = getRadarLevel();
+
+    const url = new URL(`${base}/api/radar/sweep/info`);
+    url.searchParams.set("site", site.toUpperCase());
+    if (product) url.searchParams.set("product", product);
+    if (level) url.searchParams.set("level", String(level));
+
+    const fetchOpts = signal ? { signal } : {};
+    const response = await fetch(url.toString(), fetchOpts);
+    if (!response.ok) return null;
+    return await response.json();
+}
 
 async function fetchSweepData(site, force = false, signal = null) {
     const radarApi = getRadarApiConfig();
@@ -792,6 +807,30 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         radarFetchController = new AbortController();
         radarInFlightParams = { site, product: requestedProduct, level };
         const signal = radarFetchController.signal;
+
+        // Lightweight info check: skip full fetch if scan hasn't changed
+        if (!force && radarLastKey && radarLastSite === site && radarLastProduct === requestedProduct) {
+            try {
+                const info = await fetchSweepInfo(site, signal);
+                if (info && info.key && info.key === radarLastKey) {
+                    console.log(`[radar] Scan unchanged for ${site} (key: ${info.key})`);
+                    radarFetchController = null;
+                    radarInFlightParams = null;
+                    const scanTimeStr = info.scanTime
+                        ? new Date(info.scanTime).toLocaleTimeString()
+                        : new Date().toLocaleTimeString();
+                    setBottomRadarStatus(
+                        _buildRadarStatusHTML(scanTimeStr, requestedProduct, site),
+                        true
+                    );
+                    _bindStatusProductSwitch();
+                    return true;
+                }
+            } catch (e) {
+                if (e.name === "AbortError") throw e;
+                console.warn("[radar] Info check failed, proceeding with full fetch:", e.message);
+            }
+        }
 
         setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(requestedProduct)} for ${site}...`);
 

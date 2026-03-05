@@ -146,6 +146,10 @@ class RadarCacheManager:
         safe_product = self._sanitize_name(product)
         return self.cache_dir / f"{site}_{key_name}_sweep_{safe_product}.json.gz"
 
+    def _sweep_meta_path(self, site: str, key_name: str, product: str) -> Path:
+        safe_product = self._sanitize_name(product)
+        return self.cache_dir / f"{site}_{key_name}_sweep_{safe_product}.meta.json"
+
     def get_or_extract_sweep(
         self, site: str, product_name: Optional[str] = None,
         force: bool = False, level: Optional[int] = None
@@ -927,6 +931,68 @@ class RadarAPIHandler(BaseHTTPRequestHandler):
                     self.wfile.write(decompressed)
                 return
 
+            if path == "/api/radar/sweep/info":
+                site = self._require_site(query)
+                product_name = self._get_optional_product(query)
+                level = self._get_optional_level(query)
+                site_normalized = manager._normalize_site(site)
+                manager.register_site(site_normalized)
+                resolved_product = manager._resolve_product_name(product_name)
+
+                key = None
+                key_name = None
+
+                # For L3 products, check level3 cache first
+                if manager._is_level3_request(resolved_product, level):
+                    mnemonics = manager.LEVEL3_PRODUCT_MNEMONICS.get(resolved_product, [])
+                    with manager.lock:
+                        for mnemonic in mnemonics:
+                            cache_key_l3 = f"{site_normalized}:{mnemonic}"
+                            cached = manager._level3_cache.get(cache_key_l3)
+                            if cached and cached["path"].exists():
+                                key = cached["key"]
+                                key_name = key
+                                break
+
+                # Fallback to L2 cache entry
+                if not key:
+                    with manager.lock:
+                        entry = manager.entries.get(site_normalized)
+                    if entry:
+                        key = entry.key
+                        key_name = Path(entry.key).name
+
+                if not key:
+                    self._send_json(200, {
+                        "site": site_normalized,
+                        "key": None,
+                        "product": resolved_product,
+                    })
+                    return
+
+                # Try to read cached metadata sidecar
+                assert key_name is not None  # guaranteed by `if not key` guard above
+                meta_path = manager._sweep_meta_path(
+                    site_normalized, key_name, resolved_product
+                )
+                if meta_path.exists():
+                    try:
+                        meta = json.loads(
+                            meta_path.read_text(encoding="utf-8")
+                        )
+                        self._send_json(200, meta)
+                        return
+                    except Exception:
+                        pass
+
+                # No meta file yet, return basic info
+                self._send_json(200, {
+                    "site": site_normalized,
+                    "key": key,
+                    "product": resolved_product,
+                })
+                return
+
             self._send_json(404, {"error": "Not found"})
         except Exception as exc:
             import traceback
@@ -1284,6 +1350,11 @@ def _extract_sweep_task(task: dict) -> None:
     with gzip.open(str(output_path), "wb") as f:
         f.write(json_bytes)
 
+    # Write lightweight metadata sidecar for the /sweep/info endpoint
+    meta = {k: v for k, v in result.items() if k not in ("data", "azimuths")}
+    meta_path = output_path.parent / output_path.name.replace(".json.gz", ".meta.json")
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
     del quantized
     gc.collect()
 
@@ -1445,6 +1516,11 @@ def _extract_level3_sweep(task: dict, product: str) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(str(output_path), "wb") as f:
         f.write(json_bytes)
+
+    # Write lightweight metadata sidecar for the /sweep/info endpoint
+    meta = {k: v for k, v in result.items() if k not in ("data", "azimuths")}
+    meta_path = output_path.parent / output_path.name.replace(".json.gz", ".meta.json")
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
 
     del quantized
     gc.collect()
@@ -1691,7 +1767,8 @@ def main() -> None:
     print(f"[radar] API listening on http://{args.host}:{args.port}")
     print(
         "[radar] endpoints: /health, /api/radar/status, "
-        "/api/radar/latest?site=KLZK, /api/radar/sweep?site=KLZK&product=reflectivity&level=2"
+        "/api/radar/latest?site=KLZK, /api/radar/sweep?site=KLZK&product=reflectivity&level=2, "
+        "/api/radar/sweep/info?site=KLZK&product=reflectivity"
     )
 
     try:
