@@ -816,6 +816,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
                     console.log(`[radar] Scan unchanged for ${site} (key: ${info.key})`);
                     radarFetchController = null;
                     radarInFlightParams = null;
+                    if (radarLayer) radarLayer.setOpacity(config.opacity.radar);
                     const scanTimeStr = info.scanTime
                         ? new Date(info.scanTime).toLocaleTimeString()
                         : new Date().toLocaleTimeString();
