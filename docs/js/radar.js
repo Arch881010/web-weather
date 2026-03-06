@@ -315,6 +315,30 @@ function exportColormap(product, colormapName) {
             const displayVal = Math.round((s[0] / normMax) * 150);
             lines.push(`Color: ${displayVal} ${s[1]} ${s[2]} ${s[3]}`);
         }
+    } else if (cmapData.type === "interpolated") {
+        // Interpolated colormaps use 0-1 normalized positions; convert to physical units
+        const defaultRanges = {
+            reflectivity: [-20, 80],
+            velocity: [-60, 60],
+            srv: [-60, 60],
+            cc: [0, 1.05],
+        };
+        const colorbarRange = (typeof getColorbarRange === "function") ? getColorbarRange() : {};
+        const range = defaultRanges[normalized] || [-20, 80];
+        const vmin = colorbarRange.vmin != null ? colorbarRange.vmin : range[0];
+        const vmax = colorbarRange.vmax != null ? colorbarRange.vmax : range[1];
+        const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
+        const mappedStops = sorted.map((s) => {
+            const physVal = Math.round((vmin + s[0] * (vmax - vmin)) * 100) / 100;
+            return [physVal, s[1], s[2], s[3]];
+        });
+        if (mappedStops.length >= 2) {
+            const step = Math.round((mappedStops[1][0] - mappedStops[0][0]) * 100) / 100;
+            lines.push(`Step: ${step}`);
+        }
+        for (const s of mappedStops) {
+            lines.push(`Color: ${s[0]} ${s[1]} ${s[2]} ${s[3]}`);
+        }
     } else {
         const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
         if (sorted.length >= 2) {

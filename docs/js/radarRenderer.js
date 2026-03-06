@@ -663,6 +663,10 @@ function radarCanvasLayer(sweepData, options) {
     return new RadarCanvasLayer(sweepData, options);
 }
 
+function getColorbarRange() {
+    return { vmin: _colorbarVmin, vmax: _colorbarVmax };
+}
+
 // ── Radar Colorbar Legend ──
 let _colorbarProduct = null;
 let _colorbarVmin = null;
