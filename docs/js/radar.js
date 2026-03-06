@@ -282,25 +282,46 @@ function exportColormap(product, colormapName) {
         if (!cmapData) return;
     }
 
-    // Build .pal file content
+    const productCodes = {
+        reflectivity: "BR",
+        velocity: "BV",
+        srv: "SRV",
+        cc: "CC",
+        classification: "HCA",
+    };
+
+    const unitNames = {
+        reflectivity: "dBZ",
+        velocity: "KT",
+        srv: "KT",
+        cc: "CC",
+        classification: "Code",
+    };
+
     const lines = [];
-    lines.push(`# ${colormapName}`);
-    lines.push(`# Product: ${normalized}`);
-    lines.push(`# Exported: ${new Date().toISOString()}`);
+    lines.push(`Product: ${productCodes[normalized] || "BR"}`);
+    lines.push(`Units: ${unitNames[normalized] || "dBZ"}`);
 
     if (cmapData.type === "velocity") {
-        lines.push("Product: BV");
-        lines.push("Scale: 1.942");
-        // Velocity stops are normalized -1..1; convert back to display units
         const absMax = Math.max(...cmapData.stops.map((s) => Math.abs(s[0])));
         const normMax = absMax || 1;
-        for (const s of cmapData.stops) {
+        const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
+        if (sorted.length >= 2) {
+            const first = Math.round((sorted[0][0] / normMax) * 150);
+            const second = Math.round((sorted[1][0] / normMax) * 150);
+            lines.push(`Step: ${Math.abs(second - first) || 1}`);
+        }
+        for (const s of sorted) {
             const displayVal = Math.round((s[0] / normMax) * 150);
             lines.push(`Color: ${displayVal} ${s[1]} ${s[2]} ${s[3]}`);
         }
     } else {
-        for (const s of cmapData.stops) {
-            // s = [threshold, R, G, B, alpha?]
+        const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
+        if (sorted.length >= 2) {
+            const step = sorted[1][0] - sorted[0][0];
+            lines.push(`Step: ${step}`);
+        }
+        for (const s of sorted) {
             lines.push(`Color: ${s[0]} ${s[1]} ${s[2]} ${s[3]}`);
         }
     }
