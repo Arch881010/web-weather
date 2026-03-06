@@ -51,7 +51,6 @@ const BUILTIN_COLORMAP_OPTIONS = {
     ],
 };
 
-// ── Custom colormap storage ──
 let customColormaps = {}; // { product: { name: { type, stops, alpha? } } }
 
 function loadCustomColormaps() {
@@ -279,7 +278,8 @@ function exportColormap(product, colormapName) {
     if (customColormaps[normalized] && customColormaps[normalized][colormapName]) {
         cmapData = customColormaps[normalized][colormapName];
     } else {
-        throw new Error("Only custom colormaps can be exported.");
+        cmapData = getBuiltinColormapData(normalized, colormapName);
+        if (!cmapData) return;
     }
 
     // Build .pal file content

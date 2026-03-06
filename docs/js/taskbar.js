@@ -101,7 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Colormap: upload custom colormap ──
+
 	const uploadCmapBtn = document.getElementById("upload-cmap-btn");
 	const cmapFileInput = document.getElementById("cmap-file-input");
 	if (uploadCmapBtn && cmapFileInput) {
@@ -127,7 +127,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Colormap: rename custom colormap ──
 	const renameCmapBtn = document.getElementById("rename-cmap-btn");
 	if (renameCmapBtn) {
 		renameCmapBtn.addEventListener("click", async () => {
@@ -152,7 +151,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Colormap: export selected custom colormap ──
 	const exportCmapBtn = document.getElementById("export-cmap-btn");
 	if (exportCmapBtn) {
 		exportCmapBtn.addEventListener("click", () => {
@@ -168,7 +166,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Colormap: delete custom colormap ──
 	const deleteCmapBtn = document.getElementById("delete-cmap-btn");
 	if (deleteCmapBtn) {
 		deleteCmapBtn.addEventListener("click", async () => {
@@ -190,7 +187,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Radar hover toggle ──
 	const hoverToggle = document.getElementById("radar-hover-toggle");
 	if (hoverToggle) {
 		hoverToggle.addEventListener("change", () => {
@@ -203,7 +199,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Clear all user markers ──
 	const clearMarkersBtn = document.getElementById("clear-user-markers");
 	if (clearMarkersBtn) {
 		clearMarkersBtn.addEventListener("click", () => {
@@ -213,13 +208,11 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ── Initialize colormap dropdown on load ──
 	if (typeof updateColormapDropdown === "function") {
 		const currentProduct = document.getElementById("radar-site-product")?.value || "reflectivity";
 		updateColormapDropdown(currentProduct);
 	}
 
-	// ── Colormap: live-update layer + colorbar when selection changes ──
 	const cmapSelect = document.getElementById("radar-cmap");
 	if (cmapSelect) {
 		cmapSelect.addEventListener("change", () => {
