@@ -64,8 +64,16 @@ function updateWeatherAlerts() {
 				}
 
 				// Sort alerts and watches
+
+
+				// Severity ranking: Tornado (0), Severe Thunderstorm (1), others (2)
+				function getSeverityRank(event) {
+					const e = event.toLowerCase();
+					if (e.includes("tornado")) return 0;
+					if (e.includes("severe thunderstorm")) return 1;
+					return 2;
+				}
 				data.features.sort((a, b) => {
-					// const order = ["Watch", "Advisory", "Statement", "Warning"];
 					const aIndex = order.findIndex((type) =>
 						a.properties.event.includes(type)
 					);
@@ -77,6 +85,14 @@ function updateWeatherAlerts() {
 						return aIndex - bIndex;
 					}
 
+					// Within the same event type, sort by severity
+					const aSeverity = getSeverityRank(a.properties.event);
+					const bSeverity = getSeverityRank(b.properties.event);
+					if (aSeverity !== bSeverity) {
+						return aSeverity - bSeverity;
+					}
+
+					// If severity is the same, sort by time issued
 					const aTime = new Date(a.properties.sent).getTime();
 					const bTime = new Date(b.properties.sent).getTime();
 					return aTime - bTime;
