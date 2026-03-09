@@ -1168,21 +1168,27 @@ function parseGRLevelXPlacefile(text) {
 			continue;
 		}
 
-		const textMatch = trimmed.match(/^Text:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*\d+\s*,\s*"([^"]*)"/i);
+		const textMatch = trimmed.match(/^Text:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*\d+\s*,\s*"([^"]*)"(?:\s*,\s*"([^"]*)")?/i);
 		if (textMatch) {
 			const lat = parseFloat(textMatch[1]);
 			const lon = parseFloat(textMatch[2]);
 			const label = textMatch[3];
+			const rawDesc = textMatch[4];
+			const unescapedDesc = rawDesc ? rawDesc.replace(/\\n/g, "\n") : "";
+			const descLines = unescapedDesc ? unescapedDesc.split("\n") : [];
 			if (!isNaN(lat) && !isNaN(lon)) {
 				features.push({
 					type: "Feature",
 					geometry: { type: "Point", coordinates: [lon, lat] },
 					properties: {
 						name: label,
+						title: descLines.length > 0 ? descLines[0] : label,
+						description: descLines.length > 1 ? descLines.slice(1).join("\n") : "",
 						color: rgbaToHex(...currentColor),
 						fontSize: currentFont.size,
 						fontName: currentFont.name,
 						"marker-type": "text",
+						popupButtonText: rawDesc ? "Show Full Text" : undefined,
 					},
 				});
 			}
@@ -1257,7 +1263,8 @@ function drawPlacefile(url, text) {
 					icon: L.divIcon({
 						className: "placefile-text-label",
 						html: '<span style="color:' + (feature.properties.color || "#fff") +
-							";font-size:" + (feature.properties.fontSize || 12) + 'px">' +
+							";font-size:" + (feature.properties.fontSize || 12) +
+							'px; display: inline-block; transform: translate(-50%, -50%);">' +
 							feature.properties.name + "</span>",
 						iconSize: [0, 0],
 						iconAnchor: [0, 0],
@@ -1317,10 +1324,11 @@ function drawPlacefile(url, text) {
 
 			const totalLines = fullText.split("\n").length;
 			if (totalLines > 7) {
+				const buttonText = props.popupButtonText || "Show Alert Text";
 				popupHtml += `
 				<div style="align-items: center; display: flex; justify-content: center; padding: 0px;">
 					<button class="show-placefile-text" style="margin-top: 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">
-						Show Alert Text
+						${buttonText}
 					</button>
 				</div>`;
 			}
@@ -1366,6 +1374,21 @@ function fetchAndDrawPlacefile(url) {
 		})
 		.then(text => drawPlacefile(url, text))
 		.catch(e => {
+			if (e instanceof TypeError) {
+				// Network/CORS error — retry through proxy
+				const proxyUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(url);
+				fetch(proxyUrl)
+					.then(r => {
+						if (!r.ok) throw new Error("Proxy fetch failed: " + r.status);
+						return r.text();
+					})
+					.then(text => drawPlacefile(url, text))
+					.catch(e2 => {
+						console.error("Failed to load placefile (via proxy):", url, e2);
+						showNotification("Failed to load placefile: ", url, "#ff4444");
+					});
+				return;
+			}
 			console.error("Failed to load placefile:", url, e);
 			showNotification("Failed to load placefile: ", url, "#ff4444");
 		});
