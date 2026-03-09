@@ -1,12 +1,7 @@
 async function addRadarMarkers() {
     let radarMarkersData = await (await fetch("./json/radars.json")).json();
-    /*
-    Example Feature:
-    geometry: {type: 'Point', coordinates: Array(2)}
-    id: "https://api.weather.gov/radar/stations/KMRX"
-    name: "KMRX"
-    type: "Feature"
-    */
+    // Cache globally for coordinate lookups (e.g. placefile proxy)
+    window.radarSitesData = radarMarkersData;
     for (feature of radarMarkersData["features"]) {
         let radarName = feature["name"];
         let coordinates = [feature["geometry"]["coordinates"][1], feature["geometry"]["coordinates"][0]];
