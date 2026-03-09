@@ -269,7 +269,37 @@
 							</label>
 							<input type="checkbox" id="alert-sound-toggle" />
 						</div>
+						<div class="setting-item">
+							<label for="mds-toggle">
+								Mesoscale Discussions
+								<span
+									class="info-icon"
+									title="Show SPC Mesoscale Discussions on the map">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<input type="checkbox" id="mds-toggle" checked />
+						</div>
 					</div>
+					<div class="settings-section">
+						<h3><i class="fas fa-file-alt"></i> Placefiles</h3>
+						<div class="setting-item placefile-add-row">
+							<input
+								type="text"
+								id="placefile-url-input"
+								placeholder="Enter placefile URL..."
+								style="flex: 1; min-width: 0" />
+							<button
+								id="add-placefile-btn"
+								class="cmap-action-btn"
+								title="Add placefile"
+								style="min-width: 34px">
+								<i class="fas fa-plus"></i>
+							</button>
+						</div>
+						<div id="placefile-list"></div>
+					</div>
+
 					<div class="settings-section">
 						<h3><i class="fas fa-map-marker-alt"></i> Markers</h3>
 						<div class="setting-item">
