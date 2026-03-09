@@ -9,7 +9,7 @@ let radarActiveMode = null;
 let radarFetchController = null; // AbortController for in-flight fetch
 let radarInFlightParams = null; // { site, product, level } of the current in-flight fetch
 const RADAR_SWEEP_CACHE = new Map(); // browser-side sweep data cache
-const RADAR_SWEEP_CACHE_TTL_MS = 1 * 60 * 1000; // 1 minutes
+const RADAR_SWEEP_CACHE_TTL_MS = 0.5 * 60 * 1000; // 30 s
 const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
@@ -51,7 +51,6 @@ const BUILTIN_COLORMAP_OPTIONS = {
     ],
 };
 
-// ── Custom colormap storage ──
 let customColormaps = {}; // { product: { name: { type, stops, alpha? } } }
 
 function loadCustomColormaps() {
@@ -279,28 +278,74 @@ function exportColormap(product, colormapName) {
     if (customColormaps[normalized] && customColormaps[normalized][colormapName]) {
         cmapData = customColormaps[normalized][colormapName];
     } else {
-        throw new Error("Only custom colormaps can be exported.");
+        cmapData = getBuiltinColormapData(normalized, colormapName);
+        if (!cmapData) return;
     }
 
-    // Build .pal file content
+    const productCodes = {
+        reflectivity: "BR",
+        velocity: "BV",
+        srv: "SRV",
+        cc: "CC",
+        classification: "HCA",
+    };
+
+    const unitNames = {
+        reflectivity: "dBZ",
+        velocity: "KT",
+        srv: "KT",
+        cc: "CC",
+        classification: "Code",
+    };
+
     const lines = [];
-    lines.push(`# ${colormapName}`);
-    lines.push(`# Product: ${normalized}`);
-    lines.push(`# Exported: ${new Date().toISOString()}`);
+    lines.push(`Product: ${productCodes[normalized] || "BR"}`);
+    lines.push(`Units: ${unitNames[normalized] || "dBZ"}`);
 
     if (cmapData.type === "velocity") {
-        lines.push("Product: BV");
-        lines.push("Scale: 1.942");
-        // Velocity stops are normalized -1..1; convert back to display units
         const absMax = Math.max(...cmapData.stops.map((s) => Math.abs(s[0])));
         const normMax = absMax || 1;
-        for (const s of cmapData.stops) {
+        const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
+        if (sorted.length >= 2) {
+            const first = Math.round((sorted[0][0] / normMax) * 150);
+            const second = Math.round((sorted[1][0] / normMax) * 150);
+            lines.push(`Step: ${Math.abs(second - first) || 1}`);
+        }
+        for (const s of sorted) {
             const displayVal = Math.round((s[0] / normMax) * 150);
             lines.push(`Color: ${displayVal} ${s[1]} ${s[2]} ${s[3]}`);
         }
+    } else if (cmapData.type === "interpolated") {
+        // Interpolated colormaps use 0-1 normalized positions; convert to physical units
+        const defaultRanges = {
+            reflectivity: [-20, 80],
+            velocity: [-60, 60],
+            srv: [-60, 60],
+            cc: [0, 1.05],
+        };
+        const colorbarRange = (typeof getColorbarRange === "function") ? getColorbarRange() : {};
+        const range = defaultRanges[normalized] || [-20, 80];
+        const vmin = colorbarRange.vmin != null ? colorbarRange.vmin : range[0];
+        const vmax = colorbarRange.vmax != null ? colorbarRange.vmax : range[1];
+        const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
+        const mappedStops = sorted.map((s) => {
+            const physVal = Math.round((vmin + s[0] * (vmax - vmin)) * 100) / 100;
+            return [physVal, s[1], s[2], s[3]];
+        });
+        if (mappedStops.length >= 2) {
+            const step = Math.round((mappedStops[1][0] - mappedStops[0][0]) * 100) / 100;
+            lines.push(`Step: ${step}`);
+        }
+        for (const s of mappedStops) {
+            lines.push(`Color: ${s[0]} ${s[1]} ${s[2]} ${s[3]}`);
+        }
     } else {
-        for (const s of cmapData.stops) {
-            // s = [threshold, R, G, B, alpha?]
+        const sorted = [...cmapData.stops].sort((a, b) => a[0] - b[0]);
+        if (sorted.length >= 2) {
+            const step = sorted[1][0] - sorted[0][0];
+            lines.push(`Step: ${step}`);
+        }
+        for (const s of sorted) {
             lines.push(`Color: ${s[0]} ${s[1]} ${s[2]} ${s[3]}`);
         }
     }
@@ -678,7 +723,22 @@ function updateSelectedRadarLabel(site) {
     }
 }
 
-// ── Client-side canvas rendering from sweep data (Attic Radar style) ──
+async function fetchSweepInfo(site, signal = null) {
+    const radarApi = getRadarApiConfig();
+    const base = radarApi.base;
+    const product = normalizeRadarProduct(radarApi.product || "reflectivity");
+    const level = getRadarLevel();
+
+    const url = new URL(`${base}/api/radar/sweep/info`);
+    url.searchParams.set("site", site.toUpperCase());
+    if (product) url.searchParams.set("product", product);
+    if (level) url.searchParams.set("level", String(level));
+
+    const fetchOpts = signal ? { signal } : {};
+    const response = await fetch(url.toString(), fetchOpts);
+    if (!response.ok) return null;
+    return await response.json();
+}
 
 async function fetchSweepData(site, force = false, signal = null) {
     const radarApi = getRadarApiConfig();
@@ -792,6 +852,31 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         radarFetchController = new AbortController();
         radarInFlightParams = { site, product: requestedProduct, level };
         const signal = radarFetchController.signal;
+
+        // Lightweight info check: skip full fetch if scan hasn't changed
+        if (!force && radarLastKey && radarLastSite === site && radarLastProduct === requestedProduct) {
+            try {
+                const info = await fetchSweepInfo(site, signal);
+                if (info && info.key && info.key === radarLastKey) {
+                    console.log(`[radar] Scan unchanged for ${site} (key: ${info.key})`);
+                    radarFetchController = null;
+                    radarInFlightParams = null;
+                    if (radarLayer) radarLayer.setOpacity(config.opacity.radar);
+                    const scanTimeStr = info.scanTime
+                        ? new Date(info.scanTime).toLocaleTimeString()
+                        : new Date().toLocaleTimeString();
+                    setBottomRadarStatus(
+                        _buildRadarStatusHTML(scanTimeStr, requestedProduct, site),
+                        true
+                    );
+                    _bindStatusProductSwitch();
+                    return true;
+                }
+            } catch (e) {
+                if (e.name === "AbortError") throw e;
+                console.warn("[radar] Info check failed, proceeding with full fetch:", e.message);
+            }
+        }
 
         setBottomRadarStatus(`Radar Status: Fetching ${radarProductLabel(requestedProduct)} for ${site}...`);
 

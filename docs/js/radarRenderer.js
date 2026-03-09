@@ -1,11 +1,3 @@
-/**
- * Client-side NEXRAD radar renderer for Leaflet.
- * Renders radar sweep data as canvas tiles for pixel-perfect display at
- * any zoom level — the "Attic Radar" approach: each tile draws the actual
- * radar gates that intersect it at the tile's native resolution.
- */
-
-// ── NWS-style Reflectivity Colormap ──
 // [dBZ threshold, R, G, B, A]
 const NWS_REF_COLORS = [
     [  5,  64, 224, 208, 180],
@@ -25,7 +17,6 @@ const NWS_REF_COLORS = [
     [ 75, 255, 255, 255, 200],
 ];
 
-// ── NWS-style Velocity Colormap (AtticRadar VEL1 color table) ──
 // [normalized (-1..1), R, G, B]
 // AtticRadar VEL1 color table: -73 to 73 m/s
 //   inbound (negative): light pink → hot pink → purple → blue → cyan → green → dark green
@@ -62,7 +53,6 @@ const NWS_VEL_STOPS = [
     [ 1.000,   0,   0,   0],   // 100.00%  black (max outbound)
 ];
 
-// ── Blue-Red Velocity Colormap ──
 const BLUE_RED_VEL_STOPS = [
     [-1.00,   0,   0, 245],
     [-0.75,   0,  60, 200],
@@ -78,7 +68,6 @@ const BLUE_RED_VEL_STOPS = [
     [ 1.00, 245,   0,   0],
 ];
 
-// ── Purple-Orange Velocity Colormap ──
 const PURPLE_ORANGE_VEL_STOPS = [
     [-1.00,  80,   0, 160],
     [-0.75, 100,  40, 180],
@@ -94,7 +83,6 @@ const PURPLE_ORANGE_VEL_STOPS = [
     [ 1.00, 245,  80,   0],
 ];
 
-// ── Correlation Coefficient Colormap ──
 const CC_COLORS = [
     [0.20,   0,   0,   0, 150],
     [0.40, 100, 100, 100, 180],
@@ -109,7 +97,6 @@ const CC_COLORS = [
     [1.05, 255, 255, 255, 200],
 ];
 
-// ── Alternative continuous colormaps (for reflectivity) ──
 // Each stop: [t (0..1), R, G, B]
 const TURBO_STOPS = [
     [0.00,  48,  18,  59],
@@ -168,7 +155,6 @@ const HOMEYER_STOPS = [
     [1.00, 240, 200, 255],
 ];
 
-// ── Spectral CC Colormap ──
 const SPECTRAL_CC_COLORS = [
     [0.20,  60,   0, 120, 150],
     [0.40,   0,   0, 200, 180],
@@ -183,7 +169,6 @@ const SPECTRAL_CC_COLORS = [
     [1.05, 255, 255, 255, 200],
 ];
 
-// ── Hydrometeor classification palette (HCA/HHC codes) ──
 // Codes: 0=No data, 10=Biological, 20=Ground clutter/AP, 30=Ice crystals,
 // 40=Dry snow, 50=Wet snow, 60=Rain, 70=Heavy rain, 80=Big drops,
 // 90=Graupel, 100=Hail, 140=Unknown, 150=Range folded
@@ -203,7 +188,6 @@ const HYDRO_CLASS = [
     { code: 150, label: "Range folded",         short: "Range fold",rgba: [160,  32, 240, 200] },
 ];
 
-// ── Named colormap lookup tables for built-in maps ──
 const BUILTIN_VELOCITY_CMAPS = {
     "nwsvel": NWS_VEL_STOPS,
     "bluered": BLUE_RED_VEL_STOPS,
@@ -215,7 +199,6 @@ const BUILTIN_CC_CMAPS = {
     "spectral": SPECTRAL_CC_COLORS,
 };
 
-// ── Custom colormap registry ──
 // Maps colormap name -> { type: "stepped"|"interpolated"|"velocity", stops: [...], alpha?: number }
 const customColormapRegistry = {};
 
@@ -229,6 +212,27 @@ function unregisterCustomColormap(name) {
 
 function getRegisteredColormap(name) {
     return customColormapRegistry[name] || null;
+}
+
+function getBuiltinColormapData(product, colormapName) {
+    const key = (colormapName || "").toLowerCase();
+    const norm = (product || "").toLowerCase();
+
+    if (norm === "velocity" || norm === "srv") {
+        const stops = BUILTIN_VELOCITY_CMAPS[key];
+        if (stops) return { type: "velocity", stops };
+    }
+    if (norm === "cc") {
+        const stops = BUILTIN_CC_CMAPS[key];
+        if (stops) return { type: "stepped", stops };
+    }
+    if (norm === "reflectivity") {
+        if (key === "nwsref")          return { type: "stepped",      stops: NWS_REF_COLORS };
+        if (key === "turbo")           return { type: "interpolated", stops: TURBO_STOPS };
+        if (key === "viridis")         return { type: "interpolated", stops: VIRIDIS_STOPS };
+        if (key === "homeyerrainbow")  return { type: "interpolated", stops: HOMEYER_STOPS };
+    }
+    return null;
 }
 
 /**
@@ -657,6 +661,10 @@ const RadarCanvasLayer = L.GridLayer.extend({
  */
 function radarCanvasLayer(sweepData, options) {
     return new RadarCanvasLayer(sweepData, options);
+}
+
+function getColorbarRange() {
+    return { vmin: _colorbarVmin, vmax: _colorbarVmax };
 }
 
 // ── Radar Colorbar Legend ──

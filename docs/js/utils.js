@@ -525,7 +525,7 @@ function drawPolygons(data) {
 			}
 
 			layer.on("popupopen", function () {
-				// console.log("Popup opened for feature:", JSON.stringify(feature));
+				console.log("Popup opened for feature:", JSON.stringify(feature));
 				window.cachedAlertText = getAlertText(feature);
 			});
 		},
@@ -545,7 +545,7 @@ function drawPolygons(data) {
 			};
 		},
 		id: "alert-extras",
-		interactive: false
+		interactive: false,
 	})
 		.addTo(map)
 		.bringToFront();
@@ -915,3 +915,624 @@ function playSound(markerName, textToSpeak) {
 	audio.onended = () => _processTTSQueue();
 }
 
+window.placefileLayers = window.placefileLayers || {};
+
+function parseGRLevelXPlacefile(text) {
+	const features = [];
+	const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+	let currentColor = [255, 255, 255, 255];
+	let currentFont = { size: 12, name: "Arial" };
+	let refreshSeconds = null;
+	let title = "";
+
+	// State for multi-line commands
+	let mode = null;          // "line", "polygon", "triangles", "object"
+	let coords = [];
+	let cmdMeta = {};         // label, width, etc. from the command header
+	let objectIcons = [];     // collected icons inside Object: ... End:
+
+	function rgbaToHex(r, g, b, a) {
+		const hex = "#" + [r, g, b].map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0")).join("");
+		return hex;
+	}
+
+	function currentOpacity() {
+		return currentColor[3] / 255;
+	}
+
+	function parseLabelParts(rawLabel) {
+		if (!rawLabel) return { title: "", description: "" };
+		// Unescape \n sequences
+		const unescaped = rawLabel.replace(/\\n/g, "\n");
+		const splitIndex = unescaped.indexOf("\n\n");
+		if (splitIndex === -1) {
+			return { title: unescaped.trim(), description: "" };
+		}
+		return {
+			title: unescaped.slice(0, splitIndex).trim(),
+			description: unescaped.slice(splitIndex + 2).trim(),
+		};
+	}
+
+	function parseCoordLine(line, coords) {
+		// Match all lat,lon pairs: number comma number (with optional spaces)
+		const pairRegex = /([-\d.]+)\s*,\s*([-\d.]+)/g;
+		let m;
+		while ((m = pairRegex.exec(line)) !== null) {
+			const lat = parseFloat(m[1]);
+			const lon = parseFloat(m[2]);
+			if (!isNaN(lat) && !isNaN(lon)) {
+				coords.push([lat, lon]);
+			}
+		}
+	}
+
+	function flushMultiLine() {
+		if (!mode) return;
+
+		if (mode === "line" && coords.length >= 2) {
+			const labelParts = parseLabelParts(cmdMeta.label);
+			features.push({
+				type: "Feature",
+				geometry: { type: "LineString", coordinates: coords.map(c => [c[1], c[0]]) },
+				properties: {
+					stroke: rgbaToHex(...currentColor),
+					"stroke-width": cmdMeta.width || 2,
+					"stroke-opacity": currentOpacity(),
+					name: cmdMeta.label || "",
+					title: labelParts.title,
+					description: labelParts.description,
+				},
+			});
+		} else if (mode === "polygon" && coords.length >= 3) {
+			const ring = coords.map(c => [c[1], c[0]]);
+			if (ring.length > 0) ring.push(ring[0]); // close ring
+			const labelParts = parseLabelParts(cmdMeta.label);
+			features.push({
+				type: "Feature",
+				geometry: { type: "Polygon", coordinates: [ring] },
+				properties: {
+					stroke: rgbaToHex(...currentColor),
+					"stroke-width": cmdMeta.width || 2,
+					"stroke-opacity": currentOpacity(),
+					fill: rgbaToHex(...currentColor),
+					"fill-opacity": currentOpacity() * 0.3,
+					name: cmdMeta.label || "",
+					title: labelParts.title,
+					description: labelParts.description,
+				},
+			});
+		} else if (mode === "triangles" && coords.length >= 3) {
+			// Render triangles as polygons in groups of 3 vertices
+			for (let i = 0; i + 2 < coords.length; i += 3) {
+				const tri = [coords[i], coords[i + 1], coords[i + 2], coords[i]].map(c => [c[1], c[0]]);
+				features.push({
+					type: "Feature",
+					geometry: { type: "Polygon", coordinates: [tri] },
+					properties: {
+						stroke: rgbaToHex(...currentColor),
+						"stroke-width": 1,
+						"stroke-opacity": currentOpacity(),
+						fill: rgbaToHex(...currentColor),
+						"fill-opacity": currentOpacity() * 0.5,
+					},
+				});
+			}
+		} else if (mode === "object") {
+			// Object icons are already pushed individually
+		}
+
+		mode = null;
+		coords = [];
+		cmdMeta = {};
+	}
+
+	for (let i = 0; i < lines.length; i++) {
+		const raw = lines[i];
+		const trimmed = raw.trim();
+
+		// Skip blank lines and comments
+		if (!trimmed || trimmed.startsWith(";")) continue;
+
+		// End: terminates multi-line blocks
+		if (/^End:/i.test(trimmed)) {
+			flushMultiLine();
+			continue;
+		}
+
+		if (mode === "line" || mode === "polygon" || mode === "triangles") {
+			// Coordinate lines: lat, lon  or  lat, lon, lat, lon, ...
+			// May also have inline Color: changes
+			if (/^Color:/i.test(trimmed)) {
+				// Color change mid-block
+				const parts = trimmed.replace(/^Color:\s*/i, "").trim().split(/[\s,]+/).map(Number);
+				if (parts.length >= 3) {
+					currentColor = [parts[0], parts[1], parts[2], parts.length >= 4 ? parts[3] : 255];
+				}
+				continue;
+			}
+
+			parseCoordLine(trimmed, coords);
+			continue;
+		}
+
+		if (mode === "object") {
+			const iconMatch = trimmed.match(/^Icon:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
+			if (iconMatch) {
+				const lat = parseFloat(iconMatch[1]);
+				const lon = parseFloat(iconMatch[2]);
+				const label = iconMatch[6] || "";
+				if (!isNaN(lat) && !isNaN(lon)) {
+					features.push({
+						type: "Feature",
+						geometry: { type: "Point", coordinates: [lon, lat] },
+						properties: {
+							name: label,
+							color: rgbaToHex(...currentColor),
+							"marker-type": "icon",
+						},
+					});
+				}
+			}
+			continue;
+		}
+
+		if (/^Title:\s*/i.test(trimmed)) {
+			title = trimmed.replace(/^Title:\s*/i, "").trim();
+			continue;
+		}
+
+		if (/^Refresh:\s*/i.test(trimmed)) {
+			const val = parseInt(trimmed.replace(/^Refresh:\s*/i, ""), 10);
+			if (!isNaN(val) && val > 0) refreshSeconds = val * 60;
+			continue;
+		}
+
+		if (/^RefreshSeconds:\s*/i.test(trimmed)) {
+			const val = parseInt(trimmed.replace(/^RefreshSeconds:\s*/i, ""), 10);
+			if (!isNaN(val) && val > 0) refreshSeconds = val;
+			continue;
+		}
+
+		if (/^Color:\s*/i.test(trimmed)) {
+			const parts = trimmed.replace(/^Color:\s*/i, "").trim().split(/[\s,]+/).map(Number);
+			if (parts.length >= 3) {
+				currentColor = [parts[0], parts[1], parts[2], parts.length >= 4 ? parts[3] : 255];
+			}
+			continue;
+		}
+
+		if (/^Font:\s*/i.test(trimmed)) {
+			const fontMatch = trimmed.match(/^Font:\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*"([^"]*)"/i);
+			if (fontMatch) {
+				currentFont = { size: parseInt(fontMatch[1], 10), name: fontMatch[2] };
+			}
+			continue;
+		}
+
+		if (/^TimeRange:/i.test(trimmed) || /^Threshold:/i.test(trimmed)) {
+			continue;
+		}
+
+		const lineMatch = trimmed.match(/^Line:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
+		if (lineMatch) {
+			flushMultiLine();
+			mode = "line";
+			coords = [];
+			cmdMeta = { width: parseFloat(lineMatch[1]) || 2, label: lineMatch[3] || "" };
+			// Check for trailing coordinate after the closing quote
+			const afterLabel = trimmed.replace(/^Line:\s*[-\d.]+\s*,\s*[-\d.]+\s*(?:,\s*"[^"]*")?\s*/i, "");
+			if (afterLabel) parseCoordLine(afterLabel, coords);
+			continue;
+		}
+
+		if (/^Polygon:\s*/i.test(trimmed)) {
+			flushMultiLine();
+			mode = "polygon";
+			coords = [];
+			const polyLabel = trimmed.match(/"([^"]*)"/);
+			cmdMeta = { label: polyLabel ? polyLabel[1] : "" };
+			// Check for trailing coordinate after the closing quote
+			const afterPolyLabel = trimmed.replace(/^Polygon:\s*(?:"[^"]*")?\s*/i, "");
+			if (afterPolyLabel) parseCoordLine(afterPolyLabel, coords);
+			mode = "triangles";
+			coords = [];
+			cmdMeta = {};
+			continue;
+		}
+
+		if (/^Object:\s*/i.test(trimmed)) {
+			flushMultiLine();
+			mode = "object";
+			cmdMeta = {};
+			continue;
+		}
+
+		const placeMatch = trimmed.match(/^Place:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*"([^"]*)"/i);
+		if (placeMatch) {
+			const lat = parseFloat(placeMatch[1]);
+			const lon = parseFloat(placeMatch[2]);
+			const label = placeMatch[3];
+			if (!isNaN(lat) && !isNaN(lon)) {
+				features.push({
+					type: "Feature",
+					geometry: { type: "Point", coordinates: [lon, lat] },
+					properties: {
+						name: label,
+						color: rgbaToHex(...currentColor),
+						"marker-type": "place",
+					},
+				});
+			}
+			continue;
+		}
+
+		const textMatch = trimmed.match(/^Text:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*\d+\s*,\s*"([^"]*)"(?:\s*,\s*"([^"]*)")?/i);
+		if (textMatch) {
+			const lat = parseFloat(textMatch[1]);
+			const lon = parseFloat(textMatch[2]);
+			const label = textMatch[3];
+			const rawDesc = textMatch[4];
+			const unescapedDesc = rawDesc ? rawDesc.replace(/\\n/g, "\n") : "";
+			const descLines = unescapedDesc ? unescapedDesc.split("\n") : [];
+			if (!isNaN(lat) && !isNaN(lon)) {
+				features.push({
+					type: "Feature",
+					geometry: { type: "Point", coordinates: [lon, lat] },
+					properties: {
+						name: label,
+						title: descLines.length > 0 ? descLines[0] : label,
+						description: descLines.length > 1 ? descLines.slice(1).join("\n") : "",
+						color: rgbaToHex(...currentColor),
+						fontSize: currentFont.size,
+						fontName: currentFont.name,
+						"marker-type": "text",
+						popupButtonText: rawDesc ? "Show Full Text" : undefined,
+					},
+				});
+			}
+			continue;
+		}
+
+		const circleMatch = trimmed.match(/^Circle:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
+		if (circleMatch) {
+			const lat = parseFloat(circleMatch[1]);
+			const lon = parseFloat(circleMatch[2]);
+			const radiusNm = parseFloat(circleMatch[3]);
+			const label = circleMatch[4] || "";
+			if (!isNaN(lat) && !isNaN(lon) && !isNaN(radiusNm)) {
+				const radiusDeg = radiusNm / 60; // 1 nm ≈ 1/60 degree latitude
+				const ring = [];
+				for (let a = 0; a <= 360; a += 10) {
+					const rad = (a * Math.PI) / 180;
+					const cLat = lat + radiusDeg * Math.cos(rad);
+					const cLon = lon + (radiusDeg * Math.sin(rad)) / Math.cos((lat * Math.PI) / 180);
+					ring.push([cLon, cLat]);
+				}
+				features.push({
+					type: "Feature",
+					geometry: { type: "Polygon", coordinates: [ring] },
+					properties: {
+						stroke: rgbaToHex(...currentColor),
+						"stroke-width": 2,
+						"stroke-opacity": currentOpacity(),
+						fill: rgbaToHex(...currentColor),
+						"fill-opacity": currentOpacity() * 0.15,
+						name: label,
+					},
+				});
+			}
+			continue;
+		}
+	}
+
+	flushMultiLine();
+
+	return {
+		geojson: { type: "FeatureCollection", features },
+		refreshSeconds,
+		title,
+	};
+}
+
+function drawPlacefile(url, text) {
+	const existing = window.placefileLayers[url];
+
+	// Remove old layer if it exists
+	if (existing && existing.layer) {
+		try { map.removeLayer(existing.layer); } catch (e) { }
+	}
+
+	const parsed = parseGRLevelXPlacefile(text);
+
+	const geoLayer = L.geoJSON(parsed.geojson, {
+		style: function (feature) {
+			return {
+				color: feature.properties.stroke || feature.properties.color || "#3388ff",
+				weight: feature.properties["stroke-width"] || 2,
+				opacity: feature.properties["stroke-opacity"] || 1,
+				fillColor: feature.properties.fill || feature.properties.color || "#3388ff",
+				fillOpacity: feature.properties["fill-opacity"] || 0.2,
+			};
+		},
+		pointToLayer: function (feature, latlng) {
+			const markerType = feature.properties["marker-type"];
+			if (markerType === "text") {
+				return L.marker(latlng, {
+					icon: L.divIcon({
+						className: "placefile-text-label",
+						html: '<span style="color:' + (feature.properties.color || "#fff") +
+							";font-size:" + (feature.properties.fontSize || 12) +
+							'px; display: inline-block; transform: translate(-50%, -50%);">' +
+							feature.properties.name + "</span>",
+						iconSize: [0, 0],
+						iconAnchor: [0, 0],
+					}),
+				});
+			}
+			return L.circleMarker(latlng, {
+				radius: 6,
+				color: feature.properties.color || "#3388ff",
+				fillColor: feature.properties.color || "#3388ff",
+				fillOpacity: 0.6,
+			});
+		},
+		onEachFeature: function (feature, layer) {
+			const props = feature.properties || {};
+			const title = props.title || props.name || "";
+			const description = props.description || "";
+			if (!title && !description) return;
+
+			const fullText = (title + (description ? "\n\n" + description : "")).trim();
+
+			// Try to extract an expiration time from "Valid from ... - <end time>"
+			// Matches patterns like "Valid from Sat Mar 7, 2:55pm - 5:00pm CST"
+			let expiresHtml = "";
+			const validMatch = fullText.match(/Valid\s+from\s+(.+?)\s*-\s*(.+)/i);
+			if (validMatch) {
+				const fromPart = validMatch[1].trim();
+				const toPart = validMatch[2].trim();
+				// Try to parse the end time using the date context from the from-part
+				// Extract the date portion (e.g. "Sat Mar 7") from the from-part
+				const dateMatch = fromPart.match(/^([A-Za-z]+\s+[A-Za-z]+\s+\d+)/);
+				const datePart = dateMatch ? dateMatch[1] + ", " : "";
+				const endDateStr = datePart + toPart;
+				const endDate = new Date(endDateStr);
+				if (!isNaN(endDate.getTime())) {
+					// If year is missing, assume current year
+					if (endDate.getFullYear() === 2001 || endDate.getFullYear() < 2020) {
+						endDate.setFullYear(new Date().getFullYear());
+					}
+					expiresHtml = `Expires: ${formatExpirationTime(endDate.toISOString())}<br>`;
+				}
+			}
+
+			// Build popup: title + expires + description (truncated to 7 lines)
+			let popupHtml = `<strong>${title}</strong><br>`;
+			popupHtml += expiresHtml;
+
+			if (description) {
+				const descLines = description.split("\n");
+				const maxLines = 7;
+				if (descLines.length > maxLines) {
+					popupHtml += descLines.slice(0, maxLines).join("<br>");
+				} else {
+					popupHtml += description.replace(/\n/g, "<br>");
+				}
+			}
+
+			const totalLines = fullText.split("\n").length;
+			if (totalLines > 7) {
+				const buttonText = props.popupButtonText || "Show Alert Text";
+				popupHtml += `
+				<div style="align-items: center; display: flex; justify-content: center; padding: 0px;">
+					<button class="show-placefile-text" style="margin-top: 10px; border-radius: 5px; background-color: #007bff; color: white; border: none; cursor: pointer;">
+						${buttonText}
+					</button>
+				</div>`;
+			}
+
+			layer.bindPopup(popupHtml);
+			layer.on("popupopen", function () {
+				window.cachedAlertText = fullText;
+			});
+		},
+		id: "placefile-" + url,
+	}).addTo(map);
+
+	if (existing) {
+		existing.layer = geoLayer;
+	} else {
+		window.placefileLayers[url] = { url: url, layer: geoLayer, intervalId: null, enabled: true, refreshMs: null };
+	}
+
+	// Update refresh interval if the placefile specifies one
+	if (parsed.refreshSeconds && parsed.refreshSeconds > 0) {
+		const entry = window.placefileLayers[url];
+		const newRefreshMs = parsed.refreshSeconds * 1000;
+		if (entry.refreshMs !== newRefreshMs) {
+			entry.refreshMs = newRefreshMs;
+			// Update the interval
+			if (entry.intervalId) clearInterval(entry.intervalId);
+			entry.intervalId = setInterval(() => {
+				if (entry.enabled) fetchAndDrawPlacefile(url);
+			}, newRefreshMs);
+			// Also update config
+			const pf = (config.placefiles || []).find(p => p.url === url);
+			if (pf) pf.refreshMs = newRefreshMs;
+		}
+	}
+
+}
+
+function fetchAndDrawPlacefile(url) {
+	fetch(url)
+		.then(r => {
+			if (!r.ok) throw new Error("Fetch failed: " + r.status);
+			return r.text();
+		})
+		.then(text => drawPlacefile(url, text))
+		.catch(e => {
+			if (e instanceof TypeError) {
+				// Network/CORS error — retry through proxy
+				const proxyUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(url);
+				fetch(proxyUrl)
+					.then(r => {
+						if (!r.ok) throw new Error("Proxy fetch failed: " + r.status);
+						return r.text();
+					})
+					.then(text => drawPlacefile(url, text))
+					.catch(e2 => {
+						console.error("Failed to load placefile (via proxy):", url, e2);
+						showNotification("Failed to load placefile: ", url, "#ff4444");
+					});
+				return;
+			}
+			console.error("Failed to load placefile:", url, e);
+			showNotification("Failed to load placefile: ", url, "#ff4444");
+		});
+}
+
+function setUpPlacefile(url, refreshMs) {
+	if (!url || typeof url !== "string") return;
+	url = url.trim();
+	if (!url) return;
+
+	refreshMs = refreshMs || 300000; // 5 minutes default
+
+	// If already set up, clear old interval
+	const existing = window.placefileLayers[url];
+	if (existing && existing.intervalId) {
+		clearInterval(existing.intervalId);
+	}
+
+	// Check if it's raw text (contains newlines or starts with common directives)
+	const isRawText = url.includes("\n") || /^(Title:|Refresh:|Color:|Place:|Line:|Polygon:)/im.test(url);
+
+	if (isRawText) {
+		drawPlacefile(url, url);
+	} else {
+		// It's a URL — fetch it
+		fetchAndDrawPlacefile(url);
+
+		// Set up periodic refresh (may be overridden by drawPlacefile if the file has Refresh:)
+		const intervalId = setInterval(() => {
+			const entry = window.placefileLayers[url];
+			if (entry && entry.enabled) {
+				fetchAndDrawPlacefile(url);
+			}
+		}, refreshMs);
+
+		if (window.placefileLayers[url]) {
+			window.placefileLayers[url].intervalId = intervalId;
+			window.placefileLayers[url].refreshMs = refreshMs;
+		} else {
+			window.placefileLayers[url] = { url: url, layer: null, intervalId: intervalId, enabled: true, refreshMs: refreshMs };
+		}
+	}
+
+	// Add to config if not already there (skip built-in placefiles like MDs)
+	const isBuiltIn = url === config.mdsUrl;
+	if (!isRawText && !isBuiltIn && !config.placefiles.some(p => p.url === url)) {
+		config.placefiles.push({ url: url, enabled: true, refreshMs: refreshMs });
+		localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+	}
+}
+
+function removePlacefile(url) {
+	const entry = window.placefileLayers[url];
+	if (entry) {
+		if (entry.intervalId) clearInterval(entry.intervalId);
+		if (entry.layer) {
+			try { map.removeLayer(entry.layer); } catch (e) { }
+		}
+		delete window.placefileLayers[url];
+	}
+	config.placefiles = (config.placefiles || []).filter(p => p.url !== url);
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+	renderPlacefileList();
+}
+
+function togglePlacefile(url, enabled) {
+	const entry = window.placefileLayers[url];
+	if (entry) {
+		entry.enabled = enabled;
+		if (entry.layer) {
+			if (enabled) {
+				if (!map.hasLayer(entry.layer)) entry.layer.addTo(map);
+			} else {
+				if (map.hasLayer(entry.layer)) map.removeLayer(entry.layer);
+			}
+		}
+	}
+	const pf = (config.placefiles || []).find(p => p.url === url);
+	if (pf) pf.enabled = enabled;
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+}
+
+function renderPlacefileList() {
+	const container = document.getElementById("placefile-list");
+	if (!container) return;
+	container.innerHTML = "";
+
+	for (const pf of (config.placefiles || [])) {
+		const item = document.createElement("div");
+		item.className = "placefile-item";
+
+		const toggle = document.createElement("input");
+		toggle.type = "checkbox";
+		toggle.className = "placefile-toggle";
+		toggle.checked = pf.enabled !== false;
+		toggle.addEventListener("change", () => togglePlacefile(pf.url, toggle.checked));
+
+		const urlSpan = document.createElement("span");
+		urlSpan.className = "placefile-url";
+		urlSpan.textContent = pf.url;
+		urlSpan.title = pf.url;
+
+		const removeBtn = document.createElement("button");
+		removeBtn.className = "placefile-remove";
+		removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+		removeBtn.title = "Remove placefile";
+		removeBtn.addEventListener("click", () => removePlacefile(pf.url));
+
+		item.appendChild(toggle);
+		item.appendChild(urlSpan);
+		item.appendChild(removeBtn);
+		container.appendChild(item);
+	}
+}
+
+function initPlacefiles() {
+	for (const pf of (config.placefiles || [])) {
+		if (pf.enabled !== false) {
+			setUpPlacefile(pf.url, pf.refreshMs);
+		}
+	}
+	renderPlacefileList();
+}
+
+function initMDs() {
+	if (config.show.mds) {
+		setUpPlacefile(config.mdsUrl);
+	}
+}
+
+function toggleMDs(enabled) {
+	config.show.mds = enabled;
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+
+	if (enabled) {
+		// Set up if not already loaded
+		if (!window.placefileLayers[config.mdsUrl]) {
+			setUpPlacefile(config.mdsUrl);
+		} else {
+			togglePlacefile(config.mdsUrl, true);
+		}
+	} else {
+		if (window.placefileLayers[config.mdsUrl]) {
+			togglePlacefile(config.mdsUrl, false);
+		}
+	}
+}

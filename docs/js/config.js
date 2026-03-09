@@ -10,9 +10,12 @@ const default_config = {
 	countyBordersZoomOnly: false,
 	show: {
 		watches: true,
+		mds: true,
 	},
+	mdsUrl: "https://placefiles.arch1010.dev/mds.php?full=true",
 	alertSound: false,
 	radarTilemap: "n0q",
+	placefiles: [],
 	dev: {
 		"status": false,
 		"warnings_file": "2023/real-fake.json"
@@ -126,6 +129,16 @@ const loadSettings = () => {
 
 	config.show.watches = true;
 	config.alertSound = alertSoundPref;
+
+	// Mesoscale Discussions toggle
+	const mdsPref = savedSettings.show && savedSettings.show.mds !== undefined ? savedSettings.show.mds : true;
+	const mdsToggle = document.getElementById("mds-toggle");
+	if (mdsToggle) mdsToggle.checked = mdsPref;
+	config.show.mds = mdsPref;
+
+	// Placefiles
+	config.placefiles = savedSettings.placefiles || [];
+
 	return savedSettings;
 };
 

@@ -50,6 +50,10 @@ document.addEventListener("mapLoaded", async () => {
 	updateWeatherAlerts();
 	addCountdown().then(() => updateCountdown());
 
+	// Initialize placefiles and MDs
+	initPlacefiles();
+	initMDs();
+
 	// Right-click to place user marker (custom UI dialog)
 	map.on("contextmenu", async (e) => {
 		const result = await showMarkerDialog({ title: "Place Marker", name: "My Marker" });
@@ -74,7 +78,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	// Handle button click to show alert text
 	document.addEventListener("click", function (event) {
-		if (event.target && event.target.id === "show-alert-text") {
+		if (event.target && (event.target.id === "show-alert-text" || event.target.classList.contains("show-placefile-text"))) {
 			const alertText = window.cachedAlertText || "No alert text available";
 			document.getElementById("alert-text-content").textContent = alertText;
 			document.getElementById("alert-text-model").style.display = "block";
@@ -93,5 +97,39 @@ document.addEventListener("DOMContentLoaded", function () {
 		}
 	};
 	//updateCountdown();
+
+	const addPlacefileBtn = document.getElementById("add-placefile-btn");
+	const placefileUrlInput = document.getElementById("placefile-url-input");
+	if (addPlacefileBtn && placefileUrlInput) {
+		addPlacefileBtn.addEventListener("click", () => {
+			const url = placefileUrlInput.value.trim();
+			if (!url) return;
+			if (config.placefiles.some(p => p.url === url)) {
+				showNotification("Placefile already added: ", url, "#ffaa00");
+				return;
+			}
+			setUpPlacefile(url);
+			renderPlacefileList();
+			placefileUrlInput.value = "";
+		});
+
+		placefileUrlInput.addEventListener("keydown", (e) => {
+			if (e.key === "Enter") addPlacefileBtn.click();
+		});
+	}
+
+	const mdsToggle = document.getElementById("mds-toggle");
+	if (mdsToggle) {
+		mdsToggle.addEventListener("change", () => {
+			toggleMDs(mdsToggle.checked);
+		});
+	}
+
+	const openSettingsBtn = document.getElementById("open-settings");
+	if (openSettingsBtn) {
+		openSettingsBtn.addEventListener("click", () => {
+			renderPlacefileList();
+		});
+	}
 });
 // EOC
