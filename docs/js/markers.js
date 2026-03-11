@@ -11,7 +11,7 @@ async function addRadarMarkers() {
             iconSize: [40, 20],
             iconAnchor: [20, 20]
         });
-        var marker = L.marker(coordinates, { icon: radarIcon }).addTo(map);
+        var marker = L.marker(coordinates, { icon: radarIcon, pane: 'radarIconsPane' }).addTo(map);
         marker.on("click", (e) => {
             setRadarSitePreference(radarName, true);
             updateRadarLayer();

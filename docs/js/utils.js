@@ -507,6 +507,7 @@ function drawPolygons(data) {
 			};
 		},
 		id: "weather-alerts-border",
+		pane: 'alertsPane',
 	}).addTo(map);
 
 	// Add the GeoJSON layer to the map with color coding
@@ -521,7 +522,7 @@ function drawPolygons(data) {
 		},
 		onEachFeature: function (feature, layer) {
 			if (feature.properties) {
-				layer.bindPopup(getPopupText(feature));
+				layer.bindPopup(getPopupText(feature), { pane: 'alertsPopupPane' });
 			}
 
 			layer.on("popupopen", function () {
@@ -530,6 +531,7 @@ function drawPolygons(data) {
 			});
 		},
 		id: "weather-alerts",
+		pane: 'alertsPane',
 	})
 		.addTo(map)
 		.bringToFront();
@@ -546,6 +548,7 @@ function drawPolygons(data) {
 		},
 		id: "alert-extras",
 		interactive: false,
+		pane: 'alertsPane',
 	})
 		.addTo(map)
 		.bringToFront();
