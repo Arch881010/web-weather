@@ -1,12 +1,7 @@
 async function addRadarMarkers() {
     let radarMarkersData = await (await fetch("./json/radars.json")).json();
-    /*
-    Example Feature:
-    geometry: {type: 'Point', coordinates: Array(2)}
-    id: "https://api.weather.gov/radar/stations/KMRX"
-    name: "KMRX"
-    type: "Feature"
-    */
+    // Cache globally for coordinate lookups (e.g. placefile proxy)
+    window.radarSitesData = radarMarkersData;
     for (feature of radarMarkersData["features"]) {
         let radarName = feature["name"];
         let coordinates = [feature["geometry"]["coordinates"][1], feature["geometry"]["coordinates"][0]];
@@ -16,7 +11,7 @@ async function addRadarMarkers() {
             iconSize: [40, 20],
             iconAnchor: [20, 20]
         });
-        var marker = L.marker(coordinates, { icon: radarIcon }).addTo(map);
+        var marker = L.marker(coordinates, { icon: radarIcon, pane: 'radarIconsPane' }).addTo(map);
         marker.on("click", (e) => {
             setRadarSitePreference(radarName, true);
             updateRadarLayer();
