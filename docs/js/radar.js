@@ -806,7 +806,6 @@ function setRadarSitePreference(site, persist = false) {
     if (!normalizedSite) return;
 
     if (!config.radarApi) config.radarApi = {};
-    const previousSite = (config.radarApi.site || "").trim().toUpperCase();
     config.radarApi.site = normalizedSite;
     config.radarApi.mode = "site";
 
@@ -818,11 +817,6 @@ function setRadarSitePreference(site, persist = false) {
 
     if (persist) {
         localStorage.setItem("weatherAppSettings", JSON.stringify(config));
-    }
-
-    // Refresh placefiles when the radar site actually changes
-    if (previousSite && previousSite !== normalizedSite && typeof refreshAllPlacefiles === "function") {
-        refreshAllPlacefiles();
     }
 }
 
