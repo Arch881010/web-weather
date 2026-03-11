@@ -1,12 +1,14 @@
 // The order to sort the alerts
 const order = [
-	"Watch-Background",
-	"Watch",
-	"Advisory-Background",
-	"Advisory",
-	"Statement",
+	"Tornado Warning",
+	"Severe Thunderstorm Warning",
 	"Warning-Background",
 	"Warning",
+	"Statement",
+	"Advisory-Background",
+	"Advisory",
+	"Watch-Background",
+	"Watch",
 ];
 
 // Function to fetch and update weather alerts
@@ -65,7 +67,6 @@ function updateWeatherAlerts() {
 
 				// Sort alerts and watches
 				data.features.sort((a, b) => {
-					// const order = ["Watch", "Advisory", "Statement", "Warning"];
 					const aIndex = order.findIndex((type) =>
 						a.properties.event.includes(type)
 					);
@@ -74,7 +75,7 @@ function updateWeatherAlerts() {
 					);
 
 					if (aIndex !== bIndex) {
-						return aIndex - bIndex;
+						return bIndex - aIndex;
 					}
 
 					const aTime = new Date(a.properties.sent).getTime();
@@ -136,7 +137,7 @@ function updateWeatherAlerts() {
 
 				// If event types are different, sort by event type
 				if (aIndex !== bIndex) {
-					return aIndex - bIndex;
+					return bIndex - aIndex;
 				}
 
 				// If event types are the same, sort by time issued
@@ -204,7 +205,7 @@ function updateWeatherAlerts() {
 
 						// If event types are different, sort by event type
 						if (aIndex !== bIndex) {
-							return aIndex - bIndex;
+							return bIndex - aIndex;
 						}
 
 						// If event types are the same, sort by time issued
