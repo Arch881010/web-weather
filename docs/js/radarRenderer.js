@@ -326,7 +326,7 @@ function _buildSteppedLUT(lut, stops, vmin, vmax) {
                 lut[i * 4]     = stops[s][1];
                 lut[i * 4 + 1] = stops[s][2];
                 lut[i * 4 + 2] = stops[s][3];
-                lut[i * 4 + 3] = stops[s][4];
+                lut[i * 4 + 3] = Math.min(255, Math.round(stops[s][4] * 1.2));
                 matched = true;
                 break;
             }
@@ -353,7 +353,7 @@ function _buildInterpolatedLUT(lut, stops, alpha) {
         lut[i * 4]     = Math.round(stops[lo][1] + (stops[hi][1] - stops[lo][1]) * frac);
         lut[i * 4 + 1] = Math.round(stops[lo][2] + (stops[hi][2] - stops[lo][2]) * frac);
         lut[i * 4 + 2] = Math.round(stops[lo][3] + (stops[hi][3] - stops[lo][3]) * frac);
-        lut[i * 4 + 3] = alpha;
+        lut[i * 4 + 3] = Math.min(255, Math.round(alpha * 1.2));
     }
     lut[255 * 4 + 3] = 0;
 }
@@ -379,7 +379,7 @@ function _buildVelocityLUT(lut, vmin, vmax, stops) {
         lut[i * 4]     = Math.round(stops[lo][1] + (stops[hi][1] - stops[lo][1]) * t);
         lut[i * 4 + 1] = Math.round(stops[lo][2] + (stops[hi][2] - stops[lo][2]) * t);
         lut[i * 4 + 2] = Math.round(stops[lo][3] + (stops[hi][3] - stops[lo][3]) * t);
-        lut[i * 4 + 3] = 170;
+        lut[i * 4 + 3] = 255;
     }
     lut[255 * 4 + 3] = 0;
 }
@@ -565,8 +565,8 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const invAzStep = 1 / azStep;
         const RAD_TO_DEG = 180 / Math.PI;
 
-        // Use nearest-neighbor for classification (categorical data),
-        // bilinear interpolation for all other products
+        // Use nearest-neighbor everywhere (legacy behaviour) so we do not
+        // introduce any client-side smoothing unless explicitly requested.
         const useInterp = false;
 
         for (let py = 0; py < TILE; py++) {

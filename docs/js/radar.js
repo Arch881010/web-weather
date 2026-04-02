@@ -1,15 +1,3 @@
-// Radar.js — reworked to fetch directly from Unidata S3/NOMADS via NexradClient
-// (nexrad-browser.js) instead of a local backend server.
-//
-// RadarRender.js is unchanged — it still receives the same sweep envelope.
-//
-// The only removed concept is `config.radarApi.base` (no server URL needed).
-// Everything else — site selection, product switching, colormaps, caching,
-// the WMS fallback, hover tooltips, colorbar — is identical to before.
-//
-// Requires: nexrad-browser.js loaded before this file (provides NexradClient).
-
-// ── NexradClient singleton ────────────────────────────────────────────────────
 // Shared across all calls; maintains its own in-memory TTL cache.
 const _nexradClient = new NexradClient({ cacheTtlSeconds: 30 });
 
@@ -30,8 +18,6 @@ const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
 let radarHoverHandler = null;
 let radarHoverEnabled = false;
-
-// ── Per-product colormap defaults and built-in options ────────────────────────
 
 const DEFAULT_COLORMAPS = {
     reflectivity: "NWSRef",
@@ -303,6 +289,8 @@ function isCustomColormap(product, colormapName) {
     return !!(customColormaps[normalized] && customColormaps[normalized][colormapName]);
 }
 
+// ── Rename / Confirm dialogs (unchanged) ─────────────────────────────────────
+
 function _createRenameDialog() {
     let overlay = document.getElementById("rename-dialog-overlay");
     if (overlay) return overlay;
@@ -400,6 +388,8 @@ function showConfirmDialog(message, title = "Confirm") {
     });
 }
 
+// ── Status helpers ────────────────────────────────────────────────────────────
+
 function setRadarSiteStatus(message) {
     const el = document.getElementById("radar-site-status");
     if (el) el.textContent = message || "";
@@ -419,6 +409,9 @@ function _formatScanTime(sweepData) {
     return new Date().toLocaleTimeString();
 }
 
+// ── Product lists ─────────────────────────────────────────────────────────────
+// Products available regardless of level (NexradClient handles routing internally)
+
 const AVAILABLE_PRODUCTS = [
     { value: "reflectivity",   label: "Reflectivity" },
     { value: "velocity",       label: "Velocity" },
@@ -426,15 +419,38 @@ const AVAILABLE_PRODUCTS = [
     { value: "classification", label: "Classification" },
 ];
 
+const TDWR_ILLEGAL_PRODUCTS = new Set(["srv", "classification"]);
+
+function isTdwrSite(site) {
+    const code = (site || "").trim().toUpperCase();
+    return code.length === 4 && code.startsWith("T");
+}
+
+function getAvailableProductsForSite(site) {
+    if (isTdwrSite(site)) {
+        return AVAILABLE_PRODUCTS.filter((p) => !TDWR_ILLEGAL_PRODUCTS.has(p.value));
+    }
+    return AVAILABLE_PRODUCTS;
+}
+
+function normalizeProductForSite(product, site) {
+    const normalized = normalizeRadarProduct(product);
+    const allowed = new Set(getAvailableProductsForSite(site).map((p) => p.value));
+    return allowed.has(normalized) ? normalized : "reflectivity";
+}
+
 // Keep getProductsForLevel for backwards-compat with UI that calls it
 function getProductsForLevel(level) {
     // All products are available — NexradClient routes Level II/III internally
     return AVAILABLE_PRODUCTS;
 }
 
-function syncProductDropdownsToLevel() {
-    const products = AVAILABLE_PRODUCTS;
-    const currentProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
+function syncProductDropdownsToLevel(siteOverride = config.radarApi?.site) {
+    const products = getAvailableProductsForSite(siteOverride);
+    const desiredProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
+    const currentProduct = normalizeProductForSite(desiredProduct, siteOverride);
+    if (!config.radarApi) config.radarApi = {};
+    config.radarApi.product = currentProduct;
 
     const settingsSelect = document.getElementById("radar-site-product");
     if (settingsSelect) {
@@ -462,12 +478,12 @@ function syncProductDropdownsToLevel() {
 }
 
 function _buildRadarStatusHTML(scanTimeStr, product, site) {
-    // Level badge retained for UI consistency (always shows "SR" since NexradClient
-    // uses super-resolution where available)
-    const levelLabel = "SR";
-    const levelTitle = "Super-Resolution";
+    // Level badge reflects config.radarApi.level (set by the existing frontend Level 3/Level 2 toggle)
+    const radarLevel = getRadarLevel();
+    const levelLabel = radarLevel === 3 ? "Level 3" : "Level 2";
+    const levelTitle = radarLevel === 3 ? "Level 3" : "Base Reflectivity (Level II)";
     const levelTag = `<span class="status-level-badge" title="${levelTitle}">${levelLabel}</span>`;
-    const options = AVAILABLE_PRODUCTS.map((p) => {
+    const options = getAvailableProductsForSite(site).map((p) => {
         const sel = p.value === product ? " selected" : "";
         return `<option value="${p.value}"${sel}>${p.label}</option>`;
     }).join("");
@@ -482,12 +498,15 @@ function _bindStatusProductSwitch() {
     const sel = document.getElementById("status-product-switch");
     if (!sel) return;
     sel.addEventListener("change", (e) => {
-        const newProduct = e.target.value;
+        const site = radarSelectedSite || config.radarApi?.site;
+        const newProduct = normalizeProductForSite(e.target.value, site);
         if (!config.radarApi) config.radarApi = {};
         config.radarApi.product = newProduct;
         localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+        if (newProduct !== e.target.value) e.target.value = newProduct;
         const settingsSelect = document.getElementById("radar-site-product");
         if (settingsSelect) settingsSelect.value = newProduct;
+        updateColormapDropdown(newProduct);
         updateRadarLayer();
     });
 }
@@ -514,6 +533,8 @@ function radarProductLabel(product) {
     };
     return labels[normalizeRadarProduct(product)] || "Reflectivity";
 }
+
+// ── Error handling ────────────────────────────────────────────────────────────
 
 function handleRepeatedRadarSiteFailure(site, error) {
     const message = `Radar site ${site} failed repeatedly. Switched to WMS.`;
@@ -556,9 +577,19 @@ function updateSelectedRadarLabel(site) {
     if (selected) selected.classList.add("selected-radar");
 }
 
+// ── Core data fetch — replaces fetchSweepData() + fetchSweepInfo() ────────────
+
+/**
+ * Fetch sweep data directly from S3/NOMADS via NexradClient.
+ * Returns the same envelope as the old /api/radar/sweep endpoint.
+ *
+ * AbortController signals are not directly supported by NexradClient's fetch()
+ * calls, but we honour cancellation by checking the signal before returning.
+ */
 async function fetchSweepData(site, force = false, signal = null) {
-    const product = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
-    const cacheKey = `${site.toUpperCase()}:${product}`;
+    const product = normalizeProductForSite(config.radarApi?.product || "reflectivity", site);
+    const level = config.radarApi?.level || 3;
+    const cacheKey = `${site.toUpperCase()}:${product}:L${level}`;
 
     // Browser-side sweep cache (separate from NexradClient's internal cache)
     if (!force) {
@@ -569,7 +600,7 @@ async function fetchSweepData(site, force = false, signal = null) {
         }
     }
 
-    const data = await _nexradClient.getSweep(site, product, { force });
+    const data = await _nexradClient.getSweep(site, product, { force, level });
 
     if (signal && signal.aborted) {
         throw Object.assign(new Error("AbortError"), { name: "AbortError" });
@@ -585,12 +616,13 @@ async function fetchSweepData(site, force = false, signal = null) {
     return data;
 }
 
+// ── Layer management ──────────────────────────────────────────────────────────
 
 function setRadarLayerFromSweep(sweepData, opacity) {
     if (radarLayer) { map.removeLayer(radarLayer); radarLayer = null; }
     const product = normalizeRadarProduct(sweepData.product || config.radarApi?.product || "reflectivity");
     const cmap = getColormapForProduct(product);
-    radarLayer = radarCanvasLayer(sweepData, { opacity, cmap }).addTo(map);
+    radarLayer = radarCanvasLayer(sweepData, { opacity, cmap, pane: 'radarPane' }).addTo(map);
     _bindRadarHover();
     updateRadarColorbar(product, sweepData.vmin, sweepData.vmax, cmap);
     return true;
@@ -600,20 +632,32 @@ function setRadarSitePreference(site, persist = false) {
     const normalizedSite = (site || "").trim().toUpperCase();
     if (!normalizedSite) return;
     if (!config.radarApi) config.radarApi = {};
+    const normalizedProduct = normalizeProductForSite(config.radarApi.product || "reflectivity", normalizedSite);
     config.radarApi.site = normalizedSite;
     config.radarApi.mode = "site";
+    config.radarApi.product = normalizedProduct;
     const radarModeInput = document.getElementById("radar-mode");
     if (radarModeInput) radarModeInput.value = "site";
     const radarSiteInput = document.getElementById("radar-site");
     if (radarSiteInput) radarSiteInput.value = normalizedSite;
     if (persist) localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+    syncProductDropdownsToLevel(normalizedSite);
+    updateColormapDropdown(normalizedProduct);
 }
+
+// ── Main site loader ──────────────────────────────────────────────────────────
 
 async function loadRadarForSite(radarSiteCode, coordinates = null, force = false) {
     try {
         const site = radarSiteCode.toUpperCase();
         radarSelectedSite = site;
-        const requestedProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
+        const requestedProduct = normalizeProductForSite(config.radarApi?.product || "reflectivity", site);
+        if (!config.radarApi) config.radarApi = {};
+        const productChanged = config.radarApi.product !== requestedProduct;
+        config.radarApi.product = requestedProduct;
+        if (productChanged) {
+            localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+        }
 
         // Skip duplicate in-flight request
         if (
@@ -646,6 +690,8 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         const key            = sweepData.key || "";
         const resolvedSite   = (sweepData.site || site).toUpperCase();
         const resolvedProduct= normalizeRadarProduct(sweepData.product || requestedProduct);
+        const radarLevel     = config.radarApi?.level || 2;
+        const resolvedProductKey = `${resolvedProduct}:L${radarLevel}`;
         const currentCmap    = getColormapForProduct(resolvedProduct);
 
         // Skip re-render if nothing has changed
@@ -655,7 +701,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
             key &&
             radarLastKey === key &&
             radarLastSite === resolvedSite &&
-            radarLastProduct === resolvedProduct &&
+            radarLastProduct === resolvedProductKey &&
             radarLastCmap === currentCmap
         ) {
             radarLayer.setOpacity(config.opacity.radar);
@@ -671,7 +717,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
 
         radarLastKey     = key;
         radarLastSite    = resolvedSite;
-        radarLastProduct = resolvedProduct;
+        radarLastProduct = resolvedProductKey;
         radarLastCmap    = currentCmap;
         radarSiteFailureCounts[resolvedSite] = 0;
 
@@ -729,6 +775,7 @@ function removeRadar() {
     console.log("Radar layer removed");
 }
 
+// ── Hover tooltip ─────────────────────────────────────────────────────────────
 
 function _ensureRadarHoverTooltip() {
     let el = document.getElementById("radar-hover-tooltip");
@@ -786,6 +833,8 @@ function _unbindRadarHover() {
     _hideRadarHoverTooltip();
 }
 
+// ── updateRadarLayer — main entry point called by the app ─────────────────────
+
 function updateRadarLayer(isAutomaticTick = false) {
     if (userSettings.opacity.radar === 0) {
         clearRadarLayerById();
@@ -796,8 +845,15 @@ function updateRadarLayer(isAutomaticTick = false) {
     const radarMode = config.radarApi?.mode || "wms";
 
     if (radarMode === "site") {
-        const radarSite    = (config.radarApi?.site || "").trim().toUpperCase();
-        const radarProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
+        const radarSite = (config.radarApi?.site || "").trim().toUpperCase();
+        const desiredProduct = config.radarApi?.product || "reflectivity";
+        const radarProduct = normalizeProductForSite(desiredProduct, radarSite);
+        if (!config.radarApi) config.radarApi = {};
+        if (radarProduct !== config.radarApi.product) {
+            config.radarApi.product = radarProduct;
+            localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+        }
+        syncProductDropdownsToLevel(radarSite);
 
         if (!radarSite) {
             console.warn("Radar site mode enabled but no site is set.");
@@ -818,6 +874,7 @@ function updateRadarLayer(isAutomaticTick = false) {
         return;
     }
 
+    // ── WMS fallback ──────────────────────────────────────────────────────────
     removeRadar();
 
     let radarTileMap = userSettings.radarTilemap;
@@ -852,6 +909,7 @@ function updateRadarLayer(isAutomaticTick = false) {
             attribution: "Weather data © 2024 IEM Nexrad",
             id: "radar-layer",
             opacity: config.opacity.radar,
+            pane: 'radarPane',
         }
     ).addTo(map);
 
@@ -860,4 +918,5 @@ function updateRadarLayer(isAutomaticTick = false) {
     console.info("Radar layer updated.");
 }
 
+// ── Initialise ────────────────────────────────────────────────────────────────
 loadCustomColormaps();

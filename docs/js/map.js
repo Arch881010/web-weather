@@ -10,18 +10,27 @@ const map = L.map("map", {
 }).setView([39.8283, -98.5795], 6); // Centered on the US
 
 // Create custom panes after map is initialized
-if (!map.getPane('alertsPane')) {
-	map.createPane('alertsPane');
-	map.getPane('alertsPane').style.zIndex = 800;
+function ensurePane(name, zIndex, pointerEvents) {
+	let pane = map.getPane(name);
+	if (!pane) {
+		pane = map.createPane(name);
+	}
+	if (zIndex !== undefined) {
+		pane.style.zIndex = zIndex;
+	}
+	if (pointerEvents) {
+		pane.style.pointerEvents = pointerEvents;
+	}
+	return pane;
 }
-if (!map.getPane('alertsPopupPane')) {
-	map.createPane('alertsPopupPane');
-	map.getPane('alertsPopupPane').style.zIndex = 1000;
-}
-if (!map.getPane('radarIconsPane')) {
-	map.createPane('radarIconsPane');
-	map.getPane('radarIconsPane').style.zIndex = 900;
-}
+
+ensurePane('radarPane', 350, 'none');
+ensurePane('placefilesPane', 750);
+ensurePane('alertsPane', 900);
+ensurePane('mdPane', 860);
+ensurePane('placefileMarkerPane', 940);
+ensurePane('radarIconsPane', 950);
+ensurePane('alertsPopupPane', 1000);
 
 map.on('zoomend', addCountyBorders);
 

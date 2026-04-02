@@ -19,7 +19,6 @@ async function addRadarMarkers() {
     }
 }
 
-// ── User-placeable markers ──
 let userMarkerLayers = [];
 const USER_MARKERS_KEY = "weatherAppUserMarkers";
 

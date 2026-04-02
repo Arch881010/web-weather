@@ -1,5 +1,3 @@
-// Claude wrote this, so this is "AS IS" basis for this script.
-// This was also idealized from AtticRadar's stuff, so go check it out!
 
 const S3_BASE          = 'https://unidata-nexrad-level2.s3.amazonaws.com';
 const LEVEL3_S3_BASE   = 'https://unidata-nexrad-level3.s3.amazonaws.com';
@@ -7,9 +5,15 @@ const NOMADS_BASE      = 'https://nomads.ncep.noaa.gov/pub/data/nccf/radar/nexra
 
 // Product routing
 const LEVEL3_ONLY_PRODUCTS = new Set(['reflectivity', 'classification']);
+// Level III mnemonics for products that ALSO have a Level III source.
+// velocity and srv: used when level=3 (SR mode); level=2 falls through to Level II.
 const LEVEL3_PRODUCT_MNEMONICS = {
-  reflectivity:   ['NZB', 'N0B'],
+  // TDWR reflectivity uses TZL; fall back to WSR-88D NZB/N0B ordering
+  reflectivity:   ['NZB', 'N0B', 'TZL'],
   classification: ['N0H'],
+  // TDWR velocity uses TV0; WSR-88D super-res base velocity is N0G with legacy N0V fallback
+  velocity:       ['TV0', 'N0G', 'N0V'],
+  srv:            ['N0S'],   // Storm Relative Motion (WSR-88D)
 };
 
 function normalizeSite(site) {
@@ -17,6 +21,11 @@ function normalizeSite(site) {
   const v = site.trim().toUpperCase();
   if (v.length !== 4) throw new Error(`Radar site code must be 4 characters (e.g. KLZK), got: "${site}"`);
   return v;
+}
+
+function isTdwrSite(site) {
+  const v = (site || '').trim().toUpperCase();
+  return v.length === 4 && v.startsWith('T');
 }
 
 function resolveProductName(name) {
@@ -30,6 +39,17 @@ function resolveProductName(name) {
     classification: 'classification', class: 'classification', hydrometeor: 'classification',
   };
   return aliases[n] ?? 'reflectivity';
+}
+
+function level3StationPrefixes(site) {
+  const trimmed = (site || '').trim().toUpperCase();
+  if (!trimmed) throw new Error('Missing radar site code');
+
+  const prefixes = new Set();
+  if (trimmed.length === 4) prefixes.add(trimmed.slice(1));
+  prefixes.add(trimmed);
+
+  return [...prefixes].filter(Boolean);
 }
 
 function isLevel3Request(product) {
@@ -155,22 +175,27 @@ async function fetchLatestLevel2(site) {
 }
 
 async function fetchLatestLevel3(site, mnemonic) {
-  const station3 = site.length === 4 ? site.slice(1).toUpperCase() : site.toUpperCase();
+  const stationPrefixes = level3StationPrefixes(site);
   const now = utcNow();
 
   for (let daysBack = 0; daysBack < 2; daysBack++) {
     const d = new Date(now - daysBack * 86400000);
     const { y, m, dd } = dateToYMD(d);
-    const prefix = `${station3}_${mnemonic}_${y}_${pad2(m)}_${pad2(dd)}`;
-    try {
-      const keys = await listS3Keys(LEVEL3_S3_BASE, prefix);
-      if (!keys.length) continue;
-      keys.sort();
-      const latest = keys[keys.length - 1];
-      const fileUrl = `${LEVEL3_S3_BASE}/${latest}`;
-      const data = await fetchBinary(fileUrl);
-      return { data, key: latest };
-    } catch { continue; }
+
+    for (const station of stationPrefixes) {
+      const prefix = `${station}_${mnemonic}_${y}_${pad2(m)}_${pad2(dd)}`;
+      try {
+        const keys = await listS3Keys(LEVEL3_S3_BASE, prefix);
+        if (!keys.length) continue;
+        keys.sort();
+        const latest = keys[keys.length - 1];
+        const fileUrl = `${LEVEL3_S3_BASE}/${latest}`;
+        const data = await fetchBinary(fileUrl);
+        return { data, key: latest };
+      } catch {
+        continue;
+      }
+    }
   }
   return null;
 }
@@ -252,10 +277,11 @@ class Level2Parser {
         payload = chunk;
       }
 
-      // Each payload may contain multiple 2432-byte message records
+      // Each decompressed payload contains 2432-byte message records.
+      // Archive II files have NO CTM header — message starts at byte 0 of each record.
       let pos = 0;
       while (pos + 28 <= payload.length) {
-        const slice = payload.subarray(pos);
+        const slice = payload.subarray(pos, pos + 2432);
         messages.push(slice);
         pos += 2432;
       }
@@ -270,14 +296,13 @@ class Level2Parser {
   }
 
   _parseMessage(slice) {
-    // Each slice starts with a 12-byte CTM header, then the 28-byte message header.
+    // Each 2432-byte record has a 12-byte CTM header, then the 28-byte message header.
     if (slice.length < 40) return;
 
     const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
 
-    // Skip CTM (12 bytes)
     const msgStart = 12;
-    const msgType = slice[msgStart + 2]; // byte offset 14 = message type byte
+    const msgType = slice[msgStart + 2]; // message type byte
 
     if (msgType === 31) {
       this._parseType31(slice, view, msgStart);
@@ -289,50 +314,67 @@ class Level2Parser {
 
   _parseType1(slice, view, msgStart) {
     if (slice.length < msgStart + 100) return;
-    const o = msgStart + 28; // skip 28-byte message header → data block
+
+    // Standard message header at msgStart (12 bytes CTM already skipped).
+    // The 28-byte MSG header + 72-byte MSG1-specific block = 100 bytes before data header.
+    // d = start of MSG1 observation data header.
+    const d = msgStart + 100;
 
     const julianDay = view.getUint16(msgStart + 6, false);
     const msOfDay   = view.getUint32(msgStart + 8, false);
     const scanTime  = this._julianToDate(julianDay, msOfDay);
     if (!this.scanTime) this.scanTime = scanTime;
 
-    // Data block starts 100 bytes after message start (legacy ICD)
-    const dataOffset = msgStart + 100;
+    const rawAz   = view.getUint16(d,      false);
+    const azimuth = (rawAz / 8.0) * (360.0 / 4096.0);
 
-    const rawAz     = view.getUint16(dataOffset, false);
-    const azimuth   = (rawAz / 8.0) * (360.0 / 4096.0);
+    // Pointers are byte offsets from msgStart
+    const refPtr  = view.getUint16(d + 4, false);
+    const velPtr  = view.getUint16(d + 6, false);
 
-    // Reflectivity pointer (halfword 5): offset from data block start
-    const refPtr    = view.getUint16(dataOffset + 4, false);
-    const velPtr    = view.getUint16(dataOffset + 6, false);
+    // Elevation number for multi-elevation filtering
+    const elevNum = view.getUint16(d + 40, false);
 
-    if (refPtr > 0 && refPtr < slice.length - msgStart) {
+    if (!this._loggedMsg1) {
+      this._loggedMsg1 = true;
+      const nrg = view.getUint16(d + 8,  false);
+      const rgw = view.getUint16(d + 10, false);
+      const fg  = view.getUint16(d + 12, false);
+      const nvg = view.getUint16(d + 14, false);
+      const vgw = view.getUint16(d + 16, false);
+      const nyq = view.getInt16( d + 60, false);
+      console.log(`[L2] MSG1 az=${azimuth.toFixed(1)}° elev=${elevNum} refPtr=${refPtr} velPtr=${velPtr} nRef=${nrg} refGW=${rgw}m firstG=${fg}m nVel=${nvg} velGW=${vgw}m nyq=${(nyq/100).toFixed(1)}m/s`);
+    }
+
+    if (refPtr > 0 && msgStart + refPtr < slice.length) {
       const refOffset   = msgStart + refPtr;
-      const numRefGates = view.getUint16(dataOffset + 8,  false);
-      const refGateSize = view.getUint16(dataOffset + 10, false);  // metres
-      const firstGate   = view.getUint16(dataOffset + 12, false);  // metres
+      const numRefGates = view.getUint16(d + 8,  false);
+      const refGateSize = view.getUint16(d + 10, false);
+      const firstGate   = view.getUint16(d + 12, false);
 
       const refData = new Float32Array(numRefGates);
       for (let i = 0; i < numRefGates; i++) {
         const raw = slice[refOffset + i];
-        refData[i] = raw === 0 || raw === 1 ? NaN : (raw - 66.0) / 2.0; // dBZ
+        refData[i] = raw === 0 || raw === 1 ? NaN : (raw - 66.0) / 2.0;
       }
+      this._addRadial('reflectivity', azimuth, refData, firstGate, refGateSize, elevNum);
 
-      this._addRadial('reflectivity', azimuth, refData, firstGate, refGateSize);
-
-      // Site coords in message
       if (this.siteLat === null) {
-        this.siteLat = view.getInt32(dataOffset + 48, false) / 1000.0;
-        this.siteLon = view.getInt32(dataOffset + 52, false) / 1000.0;
+        const lat = view.getInt32(d + 48, false) / 1000.0;
+        const lon = view.getInt32(d + 52, false) / 1000.0;
+        if (lat !== 0 && Math.abs(lat) <= 90) {
+          this.siteLat = lat;
+          this.siteLon = lon;
+        }
       }
     }
 
-    if (velPtr > 0 && velPtr < slice.length - msgStart) {
+    if (velPtr > 0 && msgStart + velPtr < slice.length) {
       const velOffset   = msgStart + velPtr;
-      const numVelGates = view.getUint16(dataOffset + 14, false);
-      const velGateSize = view.getUint16(dataOffset + 16, false);
-      const firstGate   = view.getUint16(dataOffset + 18, false);
-      const nyquist     = view.getInt16 (dataOffset + 60, false) / 100.0; // m/s
+      const numVelGates = view.getUint16(d + 14, false);
+      const velGateSize = view.getUint16(d + 16, false);
+      const firstGate   = view.getUint16(d + 18, false);
+      const nyquist     = view.getInt16( d + 60, false) / 100.0;
 
       const velData = new Float32Array(numVelGates);
       for (let i = 0; i < numVelGates; i++) {
@@ -340,13 +382,13 @@ class Level2Parser {
         if (raw === 0 || raw === 1) {
           velData[i] = NaN;
         } else {
-          velData[i] = (raw - 129.0) / 2.0; // m/s for 0.5 m/s resolution
+          velData[i] = (raw - 129.0) / 2.0;
         }
       }
-
-      this._addRadial('velocity', azimuth, velData, firstGate, velGateSize);
+      this._addRadial('velocity', azimuth, velData, firstGate, velGateSize, elevNum);
     }
   }
+
 
   _parseType31(slice, view, msgStart) {
     if (slice.length < msgStart + 60) return;
@@ -358,6 +400,7 @@ class Level2Parser {
     const azRaw        = view.getUint16(o + 12, false);
     const azimuth      = azRaw * (360.0 / 65536.0);
     const numBlocks    = view.getUint16(o + 28, false);
+    this._currentElevNum = view.getUint16(o + 20, false); // elevation number
 
     const scanTime = this._julianToDate(julianDay, collectionMs);
     if (!this.scanTime) this.scanTime = scanTime;
@@ -373,14 +416,30 @@ class Level2Parser {
       // Block ID is a 1-char type + 2-char name = 3 ASCII bytes
       const blockType = String.fromCharCode(slice[blockAbs]);
       const blockName = String.fromCharCode(slice[blockAbs + 1], slice[blockAbs + 2]);
+      const blockName3 = String.fromCharCode(slice[blockAbs + 1], slice[blockAbs + 2], slice[blockAbs + 3]);
+
+      if (!this._loggedBlocks && bi === 0) {
+        // Log block layout on first radial to aid debugging
+        const allBlocks = [];
+        for (let _bi = 0; _bi < numBlocks && _bi < 10; _bi++) {
+          const _pOff = o + 30 + _bi * 4;
+          if (_pOff + 4 > slice.length) break;
+          const _ptr = view.getUint32(_pOff, false);
+          const _abs = msgStart + _ptr;
+          if (_abs + 4 > slice.length) { allBlocks.push(`[${_bi}:OOB ptr=${_ptr}]`); continue; }
+          const _t = String.fromCharCode(slice[_abs]);
+          const _n = String.fromCharCode(slice[_abs+1],slice[_abs+2],slice[_abs+3]).replace(/ /g,'');
+          allBlocks.push(`${_t}/${_n}@${_ptr}`);
+        }
+        console.log(`[L2] MSG31 blocks (first radial): ${allBlocks.join(', ')}`);
+        this._loggedBlocks = true;
+      }
 
       if (blockType === 'R') {
-        // Volume Header Block or Elevation Header Block — contains site info
         if (blockName === 'VOL') {
           this._parseVolBlock(slice, view, blockAbs);
         }
       } else if (blockType === 'D') {
-        // Data Moment Block
         this._parseDataBlock31(slice, view, blockAbs, azimuth);
       }
     }
@@ -431,7 +490,8 @@ class Level2Parser {
     // Normalise field name to internal convention
     const normalised = this._normaliseFieldName(name);
     if (normalised) {
-      this._addRadial(normalised, azimuth, fieldData, firstGate, gateSize);
+      const elevNum31 = this._currentElevNum || 0;
+      this._addRadial(normalised, azimuth, fieldData, firstGate, gateSize, elevNum31);
     }
   }
 
@@ -448,9 +508,9 @@ class Level2Parser {
     return map[name.toUpperCase()] ?? null;
   }
 
-  _addRadial(field, azimuth, data, firstGate, gateSize) {
+  _addRadial(field, azimuth, data, firstGate, gateSize, elevNum = 0) {
     if (!this.sweeps[field]) this.sweeps[field] = [];
-    this.sweeps[field].push({ azimuth, data, firstGate, gateSize });
+    this.sweeps[field].push({ azimuth, data, firstGate, gateSize, elevNum });
   }
 
   _julianToDate(julianDay, msOfDay) {
@@ -463,13 +523,40 @@ class Level2Parser {
     const radials = this.sweeps[field];
     if (!radials || radials.length === 0) return null;
 
-    // Sort by azimuth
-    radials.sort((a, b) => a.azimuth - b.azimuth);
+    // Group by elevation number, pick the lowest elevation with the most radials
+    const elevGroups = new Map();
+    for (const r of radials) {
+      const e = r.elevNum || 0;
+      if (!elevGroups.has(e)) elevGroups.set(e, []);
+      elevGroups.get(e).push(r);
+    }
+    // Sort elevation numbers ascending; pick first (lowest elevation) that has >= 180 radials,
+    // fallback to the group with most radials
+    const sortedElevs = [...elevGroups.keys()].sort((a, b) => a - b);
+    let bestElev = sortedElevs[0];
+    for (const e of sortedElevs) {
+      if (elevGroups.get(e).length >= 180) { bestElev = e; break; }
+    }
+    // Among groups with similar radial counts, prefer lowest elevation
+    let maxCount = 0;
+    for (const [e, g] of elevGroups) {
+      if (g.length > maxCount) { maxCount = g.length; bestElev = e; }
+    }
+    // Re-pick: lowest elevation that has at least 80% of the max count
+    for (const e of sortedElevs) {
+      if (elevGroups.get(e).length >= maxCount * 0.8) { bestElev = e; break; }
+    }
+    // Log elevation group info
+    const elevInfo = [...elevGroups.entries()].sort((a,b)=>a[0]-b[0]).map(([e,g])=>`elev${e}:${g.length}`).join(' ');
+    console.log(`[nexrad] getSweep(${field}): ${elevInfo} → bestElev=${bestElev} (${elevGroups.get(bestElev).length} radials)`);
+    const elevRadials = elevGroups.get(bestElev);
 
-    // Pick the set with the most radials (super-res preferred)
-    // Group radials by gateSize (super-res = 250 m, legacy = 1000 m)
-    const bySuperRes = radials.filter(r => r.gateSize <= 300);
-    const chosen = bySuperRes.length >= radials.length * 0.5 ? bySuperRes : radials;
+    // Sort by azimuth
+    elevRadials.sort((a, b) => a.azimuth - b.azimuth);
+
+    // Prefer super-resolution (250m gates) within this elevation
+    const bySuperRes = elevRadials.filter(r => r.gateSize <= 300);
+    const chosen = bySuperRes.length >= elevRadials.length * 0.5 ? bySuperRes : elevRadials;
 
     const numGates  = chosen.reduce((mx, r) => Math.max(mx, r.data.length), 0);
     const firstGate = chosen[0].firstGate;
@@ -880,12 +967,23 @@ class Level3Parser {
       azimuths[ri] = startAngle;
 
       const numBytes = numHW * 2;
+      const radialEnd = Math.min(rOff + numBytes, raw.length);
+      const radialBytes = raw.subarray(rOff, radialEnd);
+      rOff += numBytes;
+
+      // SupercellWX behavior: AF1F radials can include a trailing 0 pad byte.
+      // Dropping it prevents false zero-run artifacts and radial gaps.
+      let decodeLen = radialBytes.length;
+      if (decodeLen > 0 && radialBytes[decodeLen - 1] === 0) decodeLen--;
+
       let bin = 0;
-      for (let b = 0; b < numBytes && bin < numBins; b++, rOff++) {
-        if (rOff >= raw.length) break;
-        const byte  = raw[rOff];
-        const count = (byte >> 4) & 0xF;
+      for (let b = 0; b < decodeLen && bin < numBins; b++) {
+        const byte  = radialBytes[b];
+        // AF1F RLE packing: high nibble = run length, low nibble = level.
+        // Keep raw nibble semantics: 0 means no output for this byte.
+        const runNibble = (byte >> 4) & 0xF;
         const level = byte & 0xF;
+        const count = runNibble;
         for (let c = 0; c < count && bin < numBins; c++, bin++) {
           packed[ri * numBins + bin] = level === 0 ? NaN : level;
         }
@@ -900,6 +998,9 @@ class Level3Parser {
       numGates:      numBins,
       numRadials,
       rawLevels:     true,
+      isDigital8bit:  false,  // 4-bit RLE; but thresholds from PDB may apply to SRV/velocity
+      thr1:           this.thr1,
+      thr2:           this.thr2,
     };
   }
 
@@ -1407,56 +1508,6 @@ function speckleFilter(quantised, numRadials, numGates) {
   return quantised;
 }
 
-function estimateEnvWind(data, azimuths, numGates) {
-  const numRadials = azimuths.length;
-  const azRad = new Float32Array(numRadials);
-  for (let i = 0; i < numRadials; i++) azRad[i] = (azimuths[i] * Math.PI) / 180;
-
-  const ringFractions = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75];
-  const allAz = [], allVel = [];
-
-  for (const frac of ringFractions) {
-    const ri = Math.floor(numGates * frac);
-    if (ri >= numGates) continue;
-    const ring = [], ringAz = [];
-    for (let r = 0; r < numRadials; r++) {
-      const v = data[r * numGates + ri];
-      if (!isNaN(v)) { ring.push(v); ringAz.push(azRad[r]); }
-    }
-    if (ring.length < 20) continue;
-    allVel.push(...ring);
-    allAz.push(...ringAz);
-  }
-
-  if (allVel.length < 60) return null;
-
-  // Design matrix: [cos(az), sin(az), 1]
-  let a11=0, a12=0, a13=0, a22=0, a23=0, a33=0, b1=0, b2=0, b3=0;
-  for (let i = 0; i < allAz.length; i++) {
-    const c = Math.cos(allAz[i]), s = Math.sin(allAz[i]), vel = allVel[i];
-    a11 += c*c; a12 += c*s; a13 += c;
-    a22 += s*s; a23 += s; a33 += 1;
-    b1  += c*vel; b2 += s*vel; b3 += vel;
-  }
-  // Solve 3×3 system (Cramer's rule)
-  const det = a11*(a22*a33-a23*a23) - a12*(a12*a33-a23*a13) + a13*(a12*a23-a22*a13);
-  if (Math.abs(det) < 1e-10) return null;
-  const A = (b1*(a22*a33-a23*a23) - a12*(b2*a33-a23*b3) + a13*(b2*a23-a22*b3)) / det;
-  const B = (a11*(b2*a33-a23*b3) - b1*(a12*a33-a23*a13) + a13*(a12*b3-b2*a13)) / det;
-
-  // Broadcast onto (numRadials × numGates)
-  const env = new Float32Array(numRadials * numGates);
-  for (let r = 0; r < numRadials; r++) {
-    const component = A * Math.cos(azRad[r]) + B * Math.sin(azRad[r]);
-    const base = r * numGates;
-    for (let g = 0; g < numGates; g++) env[base + g] = component;
-  }
-
-  const mean = (A * A + B * B) ** 0.5;
-  console.log(`[nexrad] VAD SRV: mean |env_wind| = ${mean.toFixed(2)} m/s`);
-  return env;
-}
-
 function parseLevel3StormMotion(data) {
   if (data.length < 110) return null;
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
@@ -1479,7 +1530,11 @@ function parseLevel3StormMotion(data) {
     const dep8 = view.getInt16(offset + 100, false);
     const dep9 = view.getInt16(offset + 102, false);
     if (dep8 === 0 && dep9 === 0) return null;
-    return { speedMs: (dep8 / 10.0) * 0.514444, directionDeg: dep9 / 10.0 };
+    // Dependent values encode meteorological storm-motion direction (FROM).
+    // Convert to vector direction (TO) for radial projection math.
+    const fromDirDeg = dep9 / 10.0;
+    const toDirDeg = (fromDirDeg + 180.0) % 360.0;
+    return { speedMs: (dep8 / 10.0) * 0.514444, directionDeg: toDirDeg };
   }
   return null;
 }
@@ -1511,6 +1566,23 @@ function pickField(availableFields, product) {
   return null;
 }
 
+function normalizeTdwrRange(sweep, site, product) {
+  if (!isTdwrSite(site) || !sweep || !sweep.numGates) return sweep;
+
+  let targetRange = null;
+  if (product === 'reflectivity') targetRange = 460000;
+  else if (product === 'velocity') targetRange = 300000;
+
+  if (!targetRange) return sweep;
+
+  const gateWidth = targetRange / sweep.numGates;
+  return {
+    ...sweep,
+    firstGateRange: 0,
+    gateWidth,
+  };
+}
+
 class NexradClient {
   constructor(options = {}) {
     this._cache    = new Map(); // site → { key, sweeps, time }
@@ -1521,8 +1593,30 @@ class NexradClient {
     site    = normalizeSite(site);
     product = resolveProductName(product);
 
-    if (isLevel3Request(product)) {
-      return this._getSweepLevel3(site, product, options.force);
+    // Routing:
+    //   classification → always Level III (no Level II equivalent)
+    //   reflectivity   → Level III unless level=2 (BR mode)
+    //   velocity       → Level III when level=3 (SR), Level II otherwise
+    //   srv            → synthesized Level III SRV from N0G + N0S storm motion
+    //   cc             → always Level II
+    const level = options.level || null;
+    if (product === 'srv') {
+      return this._getSweepSrvSuperRes(site, options.force);
+    }
+    const alwaysLevel3 = product === 'classification';
+    const velocityPrefersLevel3 = product === 'velocity' && level === 3;
+    const useLevel3 = alwaysLevel3 || velocityPrefersLevel3 || (isLevel3Request(product) && level !== 2);
+    if (useLevel3) {
+      try {
+        return await this._getSweepLevel3(site, product, options.force);
+      } catch (err) {
+        const canFallbackToL2 = product === 'reflectivity' || product === 'velocity';
+        if (canFallbackToL2 && product !== 'classification') {
+          console.warn(`[nexrad] Level III ${product} failed for ${site}, falling back to Level II (${err.message})`);
+          return this._getSweepLevel2(site, product, options.force);
+        }
+        throw err;
+      }
     }
     return this._getSweepLevel2(site, product, options.force);
   }
@@ -1547,11 +1641,13 @@ class NexradClient {
     parser.parse();
 
     const available = parser.availableFields();
+    console.log(`[nexrad] L2 parsed fields for ${site}: [${available.join(', ')}]`);
     const field = pickField(available, product);
     if (!field) {
       throw new Error(
-        `No ${product} field found. Available: ${available.join(', ') || 'none'}. ` +
-        `Classification is only available via Level III products.`
+        `No data for "${product}" in Level II file for ${site}. ` +
+        `Parsed fields: ${available.join(', ') || 'none'}. ` +
+        `Velocity/SRV need a VCP that scans velocity.`
       );
     }
 
@@ -1563,18 +1659,6 @@ class NexradClient {
     const cfg = PRODUCT_CONFIG[product] || PRODUCT_CONFIG.reflectivity;
 
     let sweepData = sweep.data;
-
-    if (product === 'srv') {
-      const env = estimateEnvWind(sweepData, sweep.azimuths, sweep.numGates);
-      if (env) {
-        // Subtract environmental wind
-        const sub = new Float32Array(sweepData.length);
-        for (let i = 0; i < sweepData.length; i++) {
-          sub[i] = isNaN(sweepData[i]) ? NaN : sweepData[i] - env[i];
-        }
-        sweepData = sub;
-      }
-    }
 
     let effectiveGates = sweep.numGates;
     {
@@ -1628,6 +1712,82 @@ class NexradClient {
   }
 
   async _getSweepLevel3(site, product, force = false) {
+    return await this._getSweepLevel3Internal(site, product, force);
+  }
+
+  async _fetchLevel3Raw(site, mnemonic, force = false) {
+    const cacheKey = `${site}:${mnemonic}`;
+    const cached   = this._cache.get(cacheKey);
+    const now      = Date.now();
+
+    if (!force && cached && (now - cached.time) < this._ttlMs) {
+      return { raw: cached.raw, key: cached.key || '' };
+    }
+
+    const result = await fetchLatestLevel3(site, mnemonic);
+    if (!result) throw new Error(`Level III ${mnemonic} not available for ${site}`);
+    this._cache.set(cacheKey, { raw: result.data, key: result.key, time: now });
+    return { raw: result.data, key: result.key || '' };
+  }
+
+  _decodeBase64ToUint8(base64) {
+    if (!base64) return new Uint8Array(0);
+    if (typeof atob !== 'undefined') {
+      const bin = atob(base64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+    return new Uint8Array(Buffer.from(base64, 'base64'));
+  }
+
+  async _getSweepSrvSuperRes(site, force = false) {
+    const velSweep = await this._getSweepLevel3Internal(site, 'velocity', force);
+    const { raw: n0sRaw } = await this._fetchLevel3Raw(site, 'N0S', force);
+
+    const storm = parseLevel3StormMotion(n0sRaw);
+    if (!storm || !Number.isFinite(storm.speedMs)) {
+      // Fall back to native N0S if storm motion cannot be extracted.
+      return this._getSweepLevel3Internal(site, 'srv', force);
+    }
+
+    const velQ = this._decodeBase64ToUint8(velSweep.data);
+    const cfg = PRODUCT_CONFIG.srv;
+    const vmin = cfg.vmin;
+    const vmax = cfg.vmax;
+    const range = vmax - vmin;
+
+    const outPhysical = new Float32Array(velQ.length);
+    const numRadials = velSweep.numRadials;
+    const numGates = velSweep.numGates;
+    const az = velSweep.azimuths;
+
+    let i = 0;
+    for (let r = 0; r < numRadials; r++) {
+      const azi = az[r] || 0;
+      const theta = (storm.directionDeg - azi) * Math.PI / 180.0;
+      const stormComponent = storm.speedMs * Math.cos(theta);
+      for (let g = 0; g < numGates; g++, i++) {
+        const q = velQ[i];
+        if (q === 255) {
+          outPhysical[i] = NaN;
+        } else {
+          const baseVel = vmin + (q / 254.0) * range;
+          // Storm-relative = base radial velocity minus storm-motion component.
+          outPhysical[i] = baseVel - stormComponent;
+        }
+      }
+    }
+
+    const outQ = quantise(outPhysical, cfg.vmin, cfg.vmax, cfg.applyMin, cfg.minVal);
+    return {
+      ...velSweep,
+      product: 'srv',
+      data: uint8ToBase64(outQ),
+    };
+  }
+
+  async _getSweepLevel3Internal(site, product, force = false) {
     const mnemonics = LEVEL3_PRODUCT_MNEMONICS[product];
     if (!mnemonics) throw new Error(`No Level III mnemonics for product: ${product}`);
 
@@ -1661,14 +1821,19 @@ class NexradClient {
     }
 
     const parser = new Level3Parser(rawData, product);
-    const sweep  = parser.parse();
+    let sweep  = parser.parse();
+    sweep = normalizeTdwrRange(sweep, site, product);
 
     const cfg = PRODUCT_CONFIG[product] || PRODUCT_CONFIG.reflectivity;
 
-    // For raw-level L3 products (RLE-encoded), map raw integer levels to physical values
+    // classification (N0H): raw category codes 10-160 — pass through unchanged.
+    // Other rawLevels: legacy 0xAF1F (0-15) or digital pkt16 (use thr1/thr2).
+    // rawLevels===false: pkt28 — already physical values.
     let sweepData;
-    if (sweep.rawLevels) {
-      sweepData = mapL3RawLevels(sweep.data, sweep, cfg.vmin, cfg.vmax);
+    if (product === 'classification') {
+      sweepData = sweep.rawLevels ? Float32Array.from(sweep.data) : sweep.data;
+    } else if (sweep.rawLevels) {
+      sweepData = mapL3RawLevels(sweep.data, sweep, cfg.vmin, cfg.vmax, product);
     } else {
       sweepData = sweep.data;
     }
@@ -1698,25 +1863,47 @@ class NexradClient {
   }
 }
 
-function mapL3RawLevels(data, sweep, vmin, vmax) {
+function mapL3RawLevels(data, sweep, vmin, vmax, product = 'reflectivity') {
   const out = new Float32Array(data.length);
   if (sweep.isDigital8bit) {
     // ICD digital 8-bit products (packet 16): value = thr1*0.1 + (raw-2)*thr2*0.1
     // Standard reflectivity: thr1=-320, thr2=5  ->  -32.0 + (raw-2)*0.5
-    const minVal = (sweep.thr1 !== undefined && sweep.thr1 !== 0 ? sweep.thr1 : -320) * 0.1;
-    const incVal = (sweep.thr2 !== undefined && sweep.thr2 !== 0 ? sweep.thr2 : 5)    * 0.1;
+    const hasThresholds = sweep.thr1 !== undefined && sweep.thr2 !== undefined && sweep.thr1 !== 0 && sweep.thr2 !== 0;
+    // Only velocity and SRV may use centered decode when thresholds are missing
+    const shouldUseCenteredDecode = (product === 'velocity' || product === 'srv') && !hasThresholds;
+    const minVal = (hasThresholds ? sweep.thr1 : -320) * 0.1;
+    const incVal = (hasThresholds ? sweep.thr2 : 5)    * 0.1;
+
     for (let i = 0; i < data.length; i++) {
       const raw = data[i];
       if (isNaN(raw)) { out[i] = NaN; continue; }
-      out[i] = minVal + (raw - 2) * incVal;
+
+      if (shouldUseCenteredDecode) {
+        // Some N0G/N0S packet-16 files omit usable threshold words.
+        // Use the canonical centered decode so inbound (negative) bins survive.
+        out[i] = (raw - 129.0) / 2.0;
+      } else {
+        out[i] = minVal + (raw - 2) * incVal;
+      }
     }
   } else {
-    // Legacy 4-bit RLE (packet 0xAF1F): levels 0-15, linearly mapped to [vmin, vmax]
+    // Legacy 4-bit RLE (packet 0xAF1F): level 0 is no-data, levels 1-15 are data.
+    // AF1F uses implicit level-to-value mapping, NOT threshold-based formula (unlike packet 16).
+    // The PDB thresholds (thr1/thr2) are for other product layers and should NOT be used for AF1F.
+    // Always use the legacy linear mapping for AF1F products.
+    const isBipolar = vmin < 0 && vmax > 0;
     const range = vmax - vmin;
+    
     for (let i = 0; i < data.length; i++) {
       const raw = data[i];
       if (isNaN(raw)) { out[i] = NaN; continue; }
-      out[i] = vmin + (raw / 15.0) * range;
+
+      if (isBipolar) {
+        // Map full range 1-15 across vmin to vmax for symmetric bipolar products
+        out[i] = vmin + ((raw - 1.0) / 14.0) * range;
+      } else {
+        out[i] = vmin + (raw / 15.0) * range;
+      }
     }
   }
   return out;

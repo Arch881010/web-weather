@@ -2,7 +2,7 @@
 
 const default_config = {
 	opacity: {
-		radar: 0.5,
+		radar: 0.75,
 		polygon_fill: 0,
 		polygon: 1,
 		countyBorders: 0.01,
@@ -91,10 +91,13 @@ const loadSettings = () => {
 	if (typeof syncProductDropdownsToLevel === "function") {
 		// Temporarily set config.radarApi so getRadarLevel() works
 		config.radarApi = { ...default_config.radarApi, ...savedSettings.radarApi };
-		syncProductDropdownsToLevel();
+		syncProductDropdownsToLevel(savedSettings.radarApi.site);
 	}
-	document.getElementById("radar-site-product").value =
-		savedSettings.radarApi.product || "reflectivity";
+	const normalizedSavedProduct = typeof normalizeProductForSite === "function"
+		? normalizeProductForSite(savedSettings.radarApi.product || "reflectivity", savedSettings.radarApi.site)
+		: (savedSettings.radarApi.product || "reflectivity");
+	document.getElementById("radar-site-product").value = normalizedSavedProduct;
+	savedSettings.radarApi.product = normalizedSavedProduct;
 
 	// Alert sound toggle
 	const alertSoundPref = savedSettings.alertSound === true;
@@ -164,6 +167,9 @@ const saveSettings = () => {
 	const radarSiteProduct =
 		document.getElementById("radar-site-product").value ||
 		"reflectivity";
+	const normalizedSiteProduct = typeof normalizeProductForSite === "function"
+		? normalizeProductForSite(radarSiteProduct, radarSite)
+		: radarSiteProduct;
 	const radarDataLevel =
 		parseInt(document.getElementById("radar-data-level").value, 10) || 2;
 	const radarCmap = document.getElementById("radar-cmap").value || "NWSRef";
@@ -178,7 +184,7 @@ const saveSettings = () => {
 	config.radarTilemap = radarTilemap;
 	config.radarApi.mode = radarMode;
 	config.radarApi.site = radarSite;
-	config.radarApi.product = radarSiteProduct;
+	config.radarApi.product = normalizedSiteProduct;
 	config.radarApi.level = radarDataLevel;
 	config.radarApi.cmap = radarCmap;
 
@@ -193,8 +199,8 @@ const saveSettings = () => {
 	// Save colormap per-product
 	if (!config.radarApi.colormaps) config.radarApi.colormaps = {};
 	const normalizedProduct = typeof normalizeRadarProduct === "function"
-		? normalizeRadarProduct(radarSiteProduct)
-		: radarSiteProduct;
+		? normalizeRadarProduct(normalizedSiteProduct)
+		: normalizedSiteProduct;
 	config.radarApi.colormaps[normalizedProduct] = radarCmap;
 
 	document.getElementById("radar-site").value = radarSite;

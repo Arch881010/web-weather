@@ -3,3 +3,4 @@ bundle.js
 __pycache__
 .radar-cache
 settings.json
+*txt*

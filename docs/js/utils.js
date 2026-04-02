@@ -977,19 +977,42 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 		if (!mode) return;
 
 		if (mode === "line" && coords.length >= 2) {
+			const isClosedRing = coords.length >= 4 && (() => {
+				const first = coords[0];
+				const last = coords[coords.length - 1];
+				return first[0] === last[0] && first[1] === last[1];
+			})();
 			const labelParts = parseLabelParts(cmdMeta.label);
-			features.push({
-				type: "Feature",
-				geometry: { type: "LineString", coordinates: coords.map(c => [c[1], c[0]]) },
-				properties: {
-					stroke: rgbaToHex(...currentColor),
-					"stroke-width": cmdMeta.width || 2,
-					"stroke-opacity": currentOpacity(),
-					name: cmdMeta.label || "",
-					title: labelParts.title,
-					description: labelParts.description,
-				},
-			});
+			if (isClosedRing) {
+				const ring = coords.map(c => [c[1], c[0]]);
+				features.push({
+					type: "Feature",
+					geometry: { type: "Polygon", coordinates: [ring] },
+					properties: {
+						stroke: rgbaToHex(...currentColor),
+						"stroke-width": cmdMeta.width || 2,
+						"stroke-opacity": currentOpacity(),
+						fill: rgbaToHex(...currentColor),
+						"fill-opacity": Math.max(currentOpacity() * 0.15, 0.02),
+						name: cmdMeta.label || "",
+						title: labelParts.title,
+						description: labelParts.description,
+					},
+				});
+			} else {
+				features.push({
+					type: "Feature",
+					geometry: { type: "LineString", coordinates: coords.map(c => [c[1], c[0]]) },
+					properties: {
+						stroke: rgbaToHex(...currentColor),
+						"stroke-width": cmdMeta.width || 2,
+						"stroke-opacity": currentOpacity(),
+						name: cmdMeta.label || "",
+						title: labelParts.title,
+						description: labelParts.description,
+					},
+				});
+			}
 		} else if (mode === "polygon" && coords.length >= 3) {
 			const ring = coords.map(c => [c[1], c[0]]);
 			if (ring.length > 0) ring.push(ring[0]); // close ring
@@ -1228,9 +1251,6 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 			// Check for trailing coordinate after the closing quote
 			const afterPolyLabel = trimmed.replace(/^Polygon:\s*(?:"[^"]*")?\s*/i, "");
 			if (afterPolyLabel) parseCoordLine(afterPolyLabel, coords);
-			mode = "triangles";
-			coords = [];
-			cmdMeta = {};
 			continue;
 		}
 
@@ -1375,6 +1395,7 @@ function makeBlackTransparent(imageUrl) {
 
 async function drawPlacefile(url, text) {
 	const existing = window.placefileLayers[url];
+	const isMDPlacefile = url === config.mdsUrl;
 
 	// Remove old layer if it exists
 	if (existing && existing.layer) {
@@ -1382,6 +1403,8 @@ async function drawPlacefile(url, text) {
 	}
 
 	const parsed = parseGRLevelXPlacefile(text, url);
+	const targetPane = 'placefilesPane';
+	const markerPane = 'placefileMarkerPane';
 
 	// Process sprite sheets: make black pixels transparent
 	const iconFileMap = parsed.iconFiles || {};
@@ -1404,19 +1427,23 @@ async function drawPlacefile(url, text) {
 	}
 
 	const geoLayer = L.geoJSON(parsed.geojson, {
+		pane: targetPane,
+		interactive: true,
 		style: function (feature) {
 			return {
 				color: feature.properties.stroke || feature.properties.color || "#3388ff",
 				weight: feature.properties["stroke-width"] || 2,
 				opacity: feature.properties["stroke-opacity"] || 1,
 				fillColor: feature.properties.fill || feature.properties.color || "#3388ff",
-				fillOpacity: feature.properties["fill-opacity"] || 0.2,
+				fillOpacity: 0,
 			};
 		},
 		pointToLayer: function (feature, latlng) {
 			const markerType = feature.properties["marker-type"];
 			if (markerType === "text") {
 				return L.marker(latlng, {
+					pane: markerPane,
+					interactive: true,
 					icon: L.divIcon({
 						className: "placefile-text-label",
 						html: '<span style="color:' + (feature.properties.color || "#fff") +
@@ -1454,6 +1481,8 @@ async function drawPlacefile(url, text) {
 				}
 				html += '</div>';
 				return L.marker(latlng, {
+					pane: markerPane,
+					interactive: true,
 					icon: L.divIcon({
 						className: "placefile-text-label",
 						html: html,
@@ -1463,6 +1492,7 @@ async function drawPlacefile(url, text) {
 				});
 			}
 			return L.circleMarker(latlng, {
+				pane: markerPane,
 				radius: 6,
 				color: feature.properties.color || "#3388ff",
 				fillColor: feature.properties.color || "#3388ff",
@@ -1524,13 +1554,42 @@ async function drawPlacefile(url, text) {
 				</div>`;
 			}
 
-			layer.bindPopup(popupHtml);
+			  layer.bindPopup(popupHtml, { pane: 'alertsPopupPane' });
 			layer.on("popupopen", function () {
 				window.cachedAlertText = fullText;
 			});
 		},
 		id: "placefile-" + url,
 	}).addTo(map);
+
+	if (isMDPlacefile) {
+		if (window.mdsClickHandler) {
+			map.off("click", window.mdsClickHandler);
+		}
+
+		window.mdsClickTargets = [];
+		geoLayer.eachLayer(function (layer) {
+			if (!layer.feature || !layer.feature.geometry) return;
+			if (layer.feature.geometry.type !== "Polygon") return;
+			window.mdsClickTargets.push({ layer: layer, geometry: layer.feature.geometry });
+		});
+
+		window.mdsClickHandler = function (event) {
+			if (!config.show.mds || !window.mdsClickTargets || window.mdsClickTargets.length === 0) return;
+			for (let i = window.mdsClickTargets.length - 1; i >= 0; i--) {
+				const target = window.mdsClickTargets[i];
+				const geometry = target.geometry;
+				if (!geometry || geometry.type !== "Polygon" || !geometry.coordinates || !geometry.coordinates[0]) continue;
+				if (isPointInPolygon(event.latlng.lat, event.latlng.lng, geometry.coordinates[0])) {
+					try { target.layer.openPopup(); } catch (e) { }
+					try { target.layer.bringToFront(); } catch (e) { }
+					break;
+				}
+			}
+		};
+
+		map.on("click", window.mdsClickHandler);
+	}
 
 	if (existing) {
 		existing.layer = geoLayer;
@@ -1681,6 +1740,11 @@ function togglePlacefile(url, enabled) {
 				if (map.hasLayer(entry.layer)) map.removeLayer(entry.layer);
 			}
 		}
+	} else if (enabled) {
+		// Disabled placefiles are not initialized at startup.
+		// When user re-enables one, initialize and fetch it now.
+		const pfCfg = (config.placefiles || []).find((p) => p.url === url);
+		setUpPlacefile(url, pfCfg?.refreshMs);
 	}
 	const pf = (config.placefiles || []).find(p => p.url === url);
 	if (pf) pf.enabled = enabled;
