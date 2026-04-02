@@ -92,7 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			config.radarApi.level = newLevel;
 			localStorage.setItem("weatherAppSettings", JSON.stringify(config));
 			if (typeof syncProductDropdownsToLevel === "function") {
-				syncProductDropdownsToLevel();
+				syncProductDropdownsToLevel(config.radarApi?.site);
 			}
 			// Update colormap dropdown for the (possibly changed) product
 			if (typeof updateColormapDropdown === "function") {

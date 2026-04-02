@@ -24,9 +24,9 @@ const default_config = {
 	api: "https://data.arch1010.dev/alerts",
 	radarApi: {
 		base: "https://radar.arch1010.dev",
-		imagePath: "/api/radar/image",
+		imagePath: "/api/radar/image", // <-- Likely removed soon
 		product: "reflectivity",
-		level: 2,
+		level: 3,
 		cmap: "NWSRef",
 		colormaps: {},
 		pollIntervalMs: 60000,

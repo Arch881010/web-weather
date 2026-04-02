@@ -419,36 +419,47 @@ const AVAILABLE_PRODUCTS = [
     { value: "classification", label: "Classification" },
 ];
 
-const TDWR_ILLEGAL_PRODUCTS = new Set(["srv", "classification"]);
+const LEVEL2_PRODUCTS = new Set(["reflectivity", "velocity"]);
 
 function isTdwrSite(site) {
     const code = (site || "").trim().toUpperCase();
     return code.length === 4 && code.startsWith("T");
 }
 
-function getAvailableProductsForSite(site) {
-    if (isTdwrSite(site)) {
-        return AVAILABLE_PRODUCTS.filter((p) => !TDWR_ILLEGAL_PRODUCTS.has(p.value));
+function getAvailableProductsForSite(site, levelOverride = getRadarLevel()) {
+    const level = Number(levelOverride) || 2;
+    let products = AVAILABLE_PRODUCTS;
+
+    if (level === 2) {
+        products = products.filter((p) => LEVEL2_PRODUCTS.has(p.value));
     }
-    return AVAILABLE_PRODUCTS;
+
+    return products;
 }
 
-function normalizeProductForSite(product, site) {
+function normalizeProductForSite(product, site, levelOverride = getRadarLevel()) {
     const normalized = normalizeRadarProduct(product);
-    const allowed = new Set(getAvailableProductsForSite(site).map((p) => p.value));
+
+    // TDWR sites do not provide SRV or Classification in this client path.
+    // Force unsupported selections to reflectivity before any fetch.
+    if (isTdwrSite(site) && (normalized === "srv" || normalized === "classification")) {
+        return "reflectivity";
+    }
+
+    const allowed = new Set(getAvailableProductsForSite(site, levelOverride).map((p) => p.value));
     return allowed.has(normalized) ? normalized : "reflectivity";
 }
 
 // Keep getProductsForLevel for backwards-compat with UI that calls it
 function getProductsForLevel(level) {
-    // All products are available — NexradClient routes Level II/III internally
-    return AVAILABLE_PRODUCTS;
+    return getAvailableProductsForSite(config.radarApi?.site, level);
 }
 
 function syncProductDropdownsToLevel(siteOverride = config.radarApi?.site) {
-    const products = getAvailableProductsForSite(siteOverride);
+    const level = getRadarLevel();
+    const products = getAvailableProductsForSite(siteOverride, level);
     const desiredProduct = normalizeRadarProduct(config.radarApi?.product || "reflectivity");
-    const currentProduct = normalizeProductForSite(desiredProduct, siteOverride);
+    const currentProduct = normalizeProductForSite(desiredProduct, siteOverride, level);
     if (!config.radarApi) config.radarApi = {};
     config.radarApi.product = currentProduct;
 
@@ -483,7 +494,7 @@ function _buildRadarStatusHTML(scanTimeStr, product, site) {
     const levelLabel = radarLevel === 3 ? "Level 3" : "Level 2";
     const levelTitle = radarLevel === 3 ? "Level 3" : "Base Reflectivity (Level II)";
     const levelTag = `<span class="status-level-badge" title="${levelTitle}">${levelLabel}</span>`;
-    const options = getAvailableProductsForSite(site).map((p) => {
+    const options = getAvailableProductsForSite(site, radarLevel).map((p) => {
         const sel = p.value === product ? " selected" : "";
         return `<option value="${p.value}"${sel}>${p.label}</option>`;
     }).join("");
@@ -499,7 +510,7 @@ function _bindStatusProductSwitch() {
     if (!sel) return;
     sel.addEventListener("change", (e) => {
         const site = radarSelectedSite || config.radarApi?.site;
-        const newProduct = normalizeProductForSite(e.target.value, site);
+        const newProduct = normalizeProductForSite(e.target.value, site, getRadarLevel());
         if (!config.radarApi) config.radarApi = {};
         config.radarApi.product = newProduct;
         localStorage.setItem("weatherAppSettings", JSON.stringify(config));
@@ -587,8 +598,8 @@ function updateSelectedRadarLabel(site) {
  * calls, but we honour cancellation by checking the signal before returning.
  */
 async function fetchSweepData(site, force = false, signal = null) {
-    const product = normalizeProductForSite(config.radarApi?.product || "reflectivity", site);
     const level = config.radarApi?.level || 3;
+    const product = normalizeProductForSite(config.radarApi?.product || "reflectivity", site, level);
     const cacheKey = `${site.toUpperCase()}:${product}:L${level}`;
 
     // Browser-side sweep cache (separate from NexradClient's internal cache)
@@ -632,7 +643,7 @@ function setRadarSitePreference(site, persist = false) {
     const normalizedSite = (site || "").trim().toUpperCase();
     if (!normalizedSite) return;
     if (!config.radarApi) config.radarApi = {};
-    const normalizedProduct = normalizeProductForSite(config.radarApi.product || "reflectivity", normalizedSite);
+    const normalizedProduct = normalizeProductForSite(config.radarApi.product || "reflectivity", normalizedSite, getRadarLevel());
     config.radarApi.site = normalizedSite;
     config.radarApi.mode = "site";
     config.radarApi.product = normalizedProduct;
@@ -645,13 +656,12 @@ function setRadarSitePreference(site, persist = false) {
     updateColormapDropdown(normalizedProduct);
 }
 
-// ── Main site loader ──────────────────────────────────────────────────────────
 
 async function loadRadarForSite(radarSiteCode, coordinates = null, force = false) {
     try {
         const site = radarSiteCode.toUpperCase();
         radarSelectedSite = site;
-        const requestedProduct = normalizeProductForSite(config.radarApi?.product || "reflectivity", site);
+        const requestedProduct = normalizeProductForSite(config.radarApi?.product || "reflectivity", site, getRadarLevel());
         if (!config.radarApi) config.radarApi = {};
         const productChanged = config.radarApi.product !== requestedProduct;
         config.radarApi.product = requestedProduct;
@@ -833,8 +843,6 @@ function _unbindRadarHover() {
     _hideRadarHoverTooltip();
 }
 
-// ── updateRadarLayer — main entry point called by the app ─────────────────────
-
 function updateRadarLayer(isAutomaticTick = false) {
     if (userSettings.opacity.radar === 0) {
         clearRadarLayerById();
@@ -847,7 +855,7 @@ function updateRadarLayer(isAutomaticTick = false) {
     if (radarMode === "site") {
         const radarSite = (config.radarApi?.site || "").trim().toUpperCase();
         const desiredProduct = config.radarApi?.product || "reflectivity";
-        const radarProduct = normalizeProductForSite(desiredProduct, radarSite);
+        const radarProduct = normalizeProductForSite(desiredProduct, radarSite, getRadarLevel());
         if (!config.radarApi) config.radarApi = {};
         if (radarProduct !== config.radarApi.product) {
             config.radarApi.product = radarProduct;
@@ -874,7 +882,6 @@ function updateRadarLayer(isAutomaticTick = false) {
         return;
     }
 
-    // ── WMS fallback ──────────────────────────────────────────────────────────
     removeRadar();
 
     let radarTileMap = userSettings.radarTilemap;

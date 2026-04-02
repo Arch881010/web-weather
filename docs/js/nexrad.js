@@ -235,6 +235,22 @@ class Level2Parser {
     for (const msg of messages) {
       this._parseMessage(msg);
     }
+
+    // Compatibility fallback: some feeds use slightly different message header
+    // byte layouts. If strict parsing found no sweeps, retry with legacy offsets.
+    if (!this._hasAnySweeps()) {
+      for (const msg of messages) {
+        this._parseMessageLegacy(msg);
+      }
+    }
+  }
+
+  _hasAnySweeps() {
+    const fields = Object.keys(this.sweeps || {});
+    for (const f of fields) {
+      if (Array.isArray(this.sweeps[f]) && this.sweeps[f].length > 0) return true;
+    }
+    return false;
   }
 
   _findBinaryStart(raw) {
@@ -296,13 +312,30 @@ class Level2Parser {
   }
 
   _parseMessage(slice) {
-    // Each 2432-byte record has a 12-byte CTM header, then the 28-byte message header.
-    if (slice.length < 40) return;
+    // Some Level II streams include a 12-byte CTM header per 2432-byte record,
+    // others begin directly with the message header. Accept both layouts.
+    if (slice.length < 28) return;
 
     const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
 
-    const msgStart = 12;
-    const msgType = slice[msgStart + 2]; // message type byte
+    const candidates = [];
+    const t12 = slice.length > 14 ? slice[14] : -1;
+    const t0  = slice.length > 2  ? slice[2]  : -1;
+    if (t12 === 1 || t12 === 31) candidates.push({ msgStart: 12, msgType: t12 });
+    if (t0 === 1 || t0 === 31)   candidates.push({ msgStart: 0,  msgType: t0  });
+
+    let chosen = null;
+    for (const c of candidates) {
+      if (this._isValidLevel2MessageCandidate(slice, view, c.msgStart, c.msgType)) {
+        chosen = c;
+        break;
+      }
+    }
+    if (!chosen) {
+      return;
+    }
+
+    const { msgStart, msgType } = chosen;
 
     if (msgType === 31) {
       this._parseType31(slice, view, msgStart);
@@ -310,6 +343,79 @@ class Level2Parser {
       this._parseType1(slice, view, msgStart);
     }
     // Types 2,3,5,7,13 etc. are metadata — skip for sweep extraction
+  }
+
+  _isValidLevel2MessageCandidate(slice, view, msgStart, msgType) {
+    if (msgStart < 0 || msgStart + 28 > slice.length) return false;
+
+    const julianDay = view.getUint16(msgStart + 6, false);
+    const msOfDay = view.getUint32(msgStart + 8, false);
+    if (julianDay < 1 || julianDay > 366) return false;
+    if (msOfDay >= 86400000) return false;
+
+    if (msgType === 1) {
+      const d = msgStart + 100;
+      if (d + 62 >= slice.length) return false;
+
+      const refPtr = view.getUint16(d + 4, false);
+      const velPtr = view.getUint16(d + 6, false);
+      if (refPtr === 0 && velPtr === 0) return false;
+
+      const nRef = view.getUint16(d + 8, false);
+      const refGW = view.getUint16(d + 10, false);
+      const firstRef = view.getUint16(d + 12, false);
+      const nVel = view.getUint16(d + 14, false);
+      const velGW = view.getUint16(d + 16, false);
+      const elevNum = view.getUint16(d + 40, false);
+      const nyq = view.getInt16(d + 60, false) / 100.0;
+
+      if (elevNum > 30) return false;
+      if (!Number.isFinite(nyq) || Math.abs(nyq) > 100) return false;
+      if (nRef > 6000 || nVel > 6000) return false;
+      if (refGW > 2000 || velGW > 2000) return false;
+      if (firstRef > 200000) return false;
+
+      const refPtrOk = refPtr > 0 && (msgStart + refPtr) < slice.length;
+      const velPtrOk = velPtr > 0 && (msgStart + velPtr) < slice.length;
+      return refPtrOk || velPtrOk;
+    }
+
+    if (msgType === 31) {
+      const o = msgStart + 28;
+      if (o + 32 >= slice.length) return false;
+      const numBlocks = view.getUint16(o + 28, false);
+      const elevNum = view.getUint16(o + 20, false);
+      if (numBlocks < 1 || numBlocks > 64) return false;
+      if (elevNum > 30) return false;
+      const firstPtr = view.getUint32(o + 30, false);
+      if (firstPtr === 0 || msgStart + firstPtr >= slice.length) return false;
+      return true;
+    }
+
+    return false;
+  }
+
+  _parseMessageLegacy(slice) {
+    if (slice.length < 28) return;
+    const view = new DataView(slice.buffer, slice.byteOffset, slice.byteLength);
+
+    const attempts = [
+      { msgStart: 12, typeOffset: 2 },
+      { msgStart: 0,  typeOffset: 2 },
+      { msgStart: 12, typeOffset: 1 },
+      { msgStart: 0,  typeOffset: 1 },
+    ];
+
+    for (const a of attempts) {
+      const idx = a.msgStart + a.typeOffset;
+      if (idx < 0 || idx >= slice.length) continue;
+      const msgType = slice[idx];
+      if (msgType !== 1 && msgType !== 31) continue;
+
+      if (msgType === 31) this._parseType31(slice, view, a.msgStart);
+      else this._parseType1(slice, view, a.msgStart);
+      return;
+    }
   }
 
   _parseType1(slice, view, msgStart) {
