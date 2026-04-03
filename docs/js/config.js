@@ -26,6 +26,7 @@ const default_config = {
 		base: "https://radar.arch1010.dev",
 		imagePath: "/api/radar/image", // <-- Likely removed soon
 		product: "reflectivity",
+		disabledProducts: ["NROT"],
 		level: 3,
 		cmap: "NWSRef",
 		colormaps: {},
@@ -63,6 +64,15 @@ const loadSettings = () => {
 		...default_config.radarApi,
 		...savedSettings.radarApi,
 	};
+	const configuredDisabledProducts = Array.isArray(default_config.radarApi.disabledProducts)
+		? default_config.radarApi.disabledProducts
+		: [];
+	const savedDisabledProducts = Array.isArray(savedSettings.radarApi.disabledProducts)
+		? savedSettings.radarApi.disabledProducts
+		: [];
+	savedSettings.radarApi.disabledProducts = Array.from(
+		new Set([...configuredDisabledProducts, ...savedDisabledProducts])
+	);
 	if (savedSettingsRaw && (savedSettings.radarApi.site || "").trim()) {
 		savedSettings.radarApi.site = savedSettings.radarApi.site.trim().toUpperCase();
 		savedSettings.radarApi.mode = "site";
@@ -129,6 +139,12 @@ const loadSettings = () => {
 		...default_config.radarApi,
 		...savedSettings.radarApi,
 	};
+	config.radarApi.disabledProducts = Array.from(
+		new Set([
+			...(Array.isArray(default_config.radarApi.disabledProducts) ? default_config.radarApi.disabledProducts : []),
+			...(Array.isArray(savedSettings.radarApi.disabledProducts) ? savedSettings.radarApi.disabledProducts : []),
+		])
+	);
 
 	config.show.watches = true;
 	config.alertSound = alertSoundPref;

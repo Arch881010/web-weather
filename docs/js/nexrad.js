@@ -4,13 +4,14 @@ const LEVEL3_S3_BASE   = 'https://unidata-nexrad-level3.s3.amazonaws.com';
 const NOMADS_BASE      = 'https://nomads.ncep.noaa.gov/pub/data/nccf/radar/nexrad_level2';
 
 // Product routing
-const LEVEL3_ONLY_PRODUCTS = new Set(['reflectivity', 'classification']);
+const LEVEL3_ONLY_PRODUCTS = new Set(['reflectivity', 'classification', 'cc']);
 // Level III mnemonics for products that ALSO have a Level III source.
 // velocity and srv: used when level=3 (SR mode); level=2 falls through to Level II.
 const LEVEL3_PRODUCT_MNEMONICS = {
   // TDWR reflectivity uses TZL; fall back to WSR-88D NZB/N0B ordering
   reflectivity:   ['NZB', 'N0B', 'TZL'],
   classification: ['N0H'],
+  cc:             ['N0C'],
   // TDWR velocity uses TV0; WSR-88D super-res base velocity is N0G with legacy N0V fallback
   velocity:       ['TV0', 'N0G', 'N0V'],
   srv:            ['N0S'],   // Storm Relative Motion (WSR-88D)
@@ -33,6 +34,7 @@ function resolveProductName(name) {
   const aliases = {
     '': 'reflectivity', ref: 'reflectivity', reflectivity: 'reflectivity',
     n0q: 'reflectivity', n0r: 'reflectivity',
+    nrot: 'nrot', rot: 'nrot',
     srv: 'srv', srm: 'srv',
     velocity: 'velocity', vel: 'velocity', v: 'velocity',
     cc: 'cc', corr: 'cc',
@@ -625,33 +627,58 @@ class Level2Parser {
     return new Date(epochMs);
   }
 
-  getSweep(field) {
+  getAvailableElevations(field) {
     const radials = this.sweeps[field];
-    if (!radials || radials.length === 0) return null;
+    if (!radials || radials.length === 0) return [];
 
-    // Group by elevation number, pick the lowest elevation with the most radials
     const elevGroups = new Map();
     for (const r of radials) {
       const e = r.elevNum || 0;
       if (!elevGroups.has(e)) elevGroups.set(e, []);
       elevGroups.get(e).push(r);
     }
-    // Sort elevation numbers ascending; pick first (lowest elevation) that has >= 180 radials,
-    // fallback to the group with most radials
-    const sortedElevs = [...elevGroups.keys()].sort((a, b) => a - b);
-    let bestElev = sortedElevs[0];
-    for (const e of sortedElevs) {
-      if (elevGroups.get(e).length >= 180) { bestElev = e; break; }
+
+    // Return sorted array of { elevNum, radialCount } for UI display
+    return [...elevGroups.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([elevNum, radials]) => ({ elevNum, radialCount: radials.length }));
+  }
+
+  getSweep(field, requestedElevNum = null) {
+    const radials = this.sweeps[field];
+    if (!radials || radials.length === 0) return null;
+
+    // Group by elevation number
+    const elevGroups = new Map();
+    for (const r of radials) {
+      const e = r.elevNum || 0;
+      if (!elevGroups.has(e)) elevGroups.set(e, []);
+      elevGroups.get(e).push(r);
     }
-    // Among groups with similar radial counts, prefer lowest elevation
-    let maxCount = 0;
-    for (const [e, g] of elevGroups) {
-      if (g.length > maxCount) { maxCount = g.length; bestElev = e; }
+
+    let bestElev = null;
+
+    // If a specific elevation is requested, use it if available
+    if (requestedElevNum !== null && elevGroups.has(requestedElevNum)) {
+      bestElev = requestedElevNum;
+    } else {
+      // Auto-select: pick the lowest elevation with the most radials
+      const sortedElevs = [...elevGroups.keys()].sort((a, b) => a - b);
+      bestElev = sortedElevs[0];
+      for (const e of sortedElevs) {
+        if (elevGroups.get(e).length >= 180) { bestElev = e; break; }
+      }
+      // Among groups with similar radial counts, prefer lowest elevation
+      let maxCount = 0;
+      for (const [e, g] of elevGroups) {
+        if (g.length > maxCount) { maxCount = g.length; bestElev = e; }
+      }
+      // Re-pick: lowest elevation that has at least 80% of the max count
+      for (const e of sortedElevs) {
+        if (elevGroups.get(e).length >= maxCount * 0.8) { bestElev = e; break; }
+      }
     }
-    // Re-pick: lowest elevation that has at least 80% of the max count
-    for (const e of sortedElevs) {
-      if (elevGroups.get(e).length >= maxCount * 0.8) { bestElev = e; break; }
-    }
+
     // Log elevation group info
     const elevInfo = [...elevGroups.entries()].sort((a,b)=>a[0]-b[0]).map(([e,g])=>`elev${e}:${g.length}`).join(' ');
     console.log(`[nexrad] getSweep(${field}): ${elevInfo} → bestElev=${bestElev} (${elevGroups.get(bestElev).length} radials)`);
@@ -1569,8 +1596,9 @@ const BZip2 = (() => {
 const PRODUCT_CONFIG = {
   reflectivity: { vmin: -20.0, vmax: 80.0,  minVal: 5.0,  applyMin: true  },
   velocity:     { vmin: -80.0, vmax: 80.0,  minVal: null, applyMin: false },
+  nrot:         { vmin: 0.0,   vmax: 80.0,  minVal: null, applyMin: false },
   srv:          { vmin: -80.0, vmax: 80.0,  minVal: null, applyMin: false },
-  cc:           { vmin: 0.2,   vmax: 1.05,  minVal: 0.2,  applyMin: true  },
+  cc:           { vmin: 0.28,  vmax: 1.05,  minVal: 0.28, applyMin: true  },
   classification:{ vmin: 0.0,  vmax: 160.0, minVal: null, applyMin: false },
 };
 
@@ -1659,6 +1687,7 @@ function findBytes(arr, seq, start = 0) {
 const FIELD_CANDIDATES = {
   reflectivity:   ['reflectivity', 'DBZ', 'REF', 'base_reflectivity'],
   velocity:       ['velocity', 'VEL', 'VR', 'corrected_velocity'],
+  nrot:           ['velocity', 'VEL', 'VR', 'corrected_velocity'],
   srv:            ['storm_relative_velocity', 'SRV', 'SRM', 'velocity', 'VEL'],
   cc:             ['cc', 'cross_correlation_ratio', 'RHOHV', 'RHO'],
   classification: ['radar_echo_classification', 'hydrometeor_classification', 'HCLASS', 'EC'],
@@ -1703,20 +1732,25 @@ class NexradClient {
     //   classification → always Level III (no Level II equivalent)
     //   reflectivity   → Level III unless level=2 (BR mode)
     //   velocity       → Level III when level=3 (SR), Level II otherwise
+    //   nrot           → derived azimuthal-shear magnitude from velocity
     //   srv            → synthesized Level III SRV from N0G + N0S storm motion
-    //   cc             → always Level II
+    //   cc             → Level III when level=3 (dual-pol CC), Level II otherwise
     const level = options.level || null;
     if (product === 'srv') {
       return this._getSweepSrvSuperRes(site, options.force);
     }
+    if (product === 'nrot') {
+      return this._getSweepNrot(site, level, options.force);
+    }
     const alwaysLevel3 = product === 'classification';
     const velocityPrefersLevel3 = product === 'velocity' && level === 3;
-    const useLevel3 = alwaysLevel3 || velocityPrefersLevel3 || (isLevel3Request(product) && level !== 2);
+    const ccPrefersLevel3 = product === 'cc' && level === 3;
+    const useLevel3 = alwaysLevel3 || velocityPrefersLevel3 || ccPrefersLevel3 || (isLevel3Request(product) && level !== 2);
     if (useLevel3) {
       try {
         return await this._getSweepLevel3(site, product, options.force);
       } catch (err) {
-        const canFallbackToL2 = product === 'reflectivity' || product === 'velocity';
+        const canFallbackToL2 = product === 'reflectivity' || product === 'velocity' || product === 'cc';
         if (canFallbackToL2 && product !== 'classification') {
           console.warn(`[nexrad] Level III ${product} failed for ${site}, falling back to Level II (${err.message})`);
           return this._getSweepLevel2(site, product, options.force);
@@ -1725,6 +1759,59 @@ class NexradClient {
       }
     }
     return this._getSweepLevel2(site, product, options.force);
+  }
+
+  _deriveNrotFromVelocitySweep(velSweep) {
+    const cfg = PRODUCT_CONFIG.nrot;
+    const vmin = Number.isFinite(velSweep.vmin) ? velSweep.vmin : PRODUCT_CONFIG.velocity.vmin;
+    const vmax = Number.isFinite(velSweep.vmax) ? velSweep.vmax : PRODUCT_CONFIG.velocity.vmax;
+    const vrange = vmax - vmin || 160;
+
+    const velQ = this._decodeBase64ToUint8(velSweep.data);
+    const numRadials = velSweep.numRadials;
+    const numGates = velSweep.numGates;
+    const out = new Float32Array(velQ.length);
+
+    for (let r = 0; r < numRadials; r++) {
+      const rPrev = (r - 1 + numRadials) % numRadials;
+      const rNext = (r + 1) % numRadials;
+      for (let g = 0; g < numGates; g++) {
+        const idx = r * numGates + g;
+        const q = velQ[idx];
+        if (q === 255) { out[idx] = NaN; continue; }
+
+        const qPrev = velQ[rPrev * numGates + g];
+        const qNext = velQ[rNext * numGates + g];
+
+        if (qPrev === 255 || qNext === 255) {
+          out[idx] = NaN;
+          continue;
+        }
+
+        const vPrev = vmin + (qPrev / 254.0) * vrange;
+        const vNext = vmin + (qNext / 254.0) * vrange;
+
+        // Simple azimuthal shear proxy (m/s), absolute for normalized rotation display.
+        out[idx] = Math.abs(vNext - vPrev) * 0.5;
+      }
+    }
+
+    const outQ = quantise(out, cfg.vmin, cfg.vmax, cfg.applyMin, cfg.minVal);
+    return {
+      ...velSweep,
+      product: 'nrot',
+      vmin: cfg.vmin,
+      vmax: cfg.vmax,
+      data: uint8ToBase64(outQ),
+    };
+  }
+
+  async _getSweepNrot(site, level, force = false) {
+    const useLevel3Vel = Number(level) === 3;
+    const velSweep = useLevel3Vel
+      ? await this._getSweepLevel3Internal(site, 'velocity', force)
+      : await this._getSweepLevel2(site, 'velocity', force);
+    return this._deriveNrotFromVelocitySweep(velSweep);
   }
 
   async _getSweepLevel2(site, product, force = false) {
@@ -1757,7 +1844,7 @@ class NexradClient {
       );
     }
 
-    const sweep = parser.getSweep(field);
+    const sweep = parser.getSweep(field, options.requestedElevNum);
     if (!sweep) throw new Error(`No sweep data for field "${field}" in ${site}`);
 
     const lat = parser.siteLat ?? 0;
@@ -1797,6 +1884,9 @@ class NexradClient {
 
     const maxRange = (sweep.firstGateRange + effectiveGates * sweep.gateWidth);
 
+    // Get available elevations for tilt selector
+    const availableElevations = parser.getAvailableElevations(field) || [];
+
     return {
       site,
       key:            key || '',
@@ -1814,6 +1904,7 @@ class NexradClient {
       noDataValue:    255,
       data:           uint8ToBase64(quantised),
       scanTime:       parser.scanTime ? parser.scanTime.toISOString() : null,
+      availableElevations: availableElevations,
     };
   }
 
@@ -1965,6 +2056,7 @@ class NexradClient {
       noDataValue:    255,
       data:           uint8ToBase64(quantised),
       scanTime:       parser.scanTime ? parser.scanTime.toISOString() : null,
+      availableElevations: [],  // Level 3 single-tilt, no elevation selection
     };
   }
 }
@@ -1984,7 +2076,15 @@ function mapL3RawLevels(data, sweep, vmin, vmax, product = 'reflectivity') {
       const raw = data[i];
       if (isNaN(raw)) { out[i] = NaN; continue; }
 
-      if (shouldUseCenteredDecode) {
+      if (product === 'cc') {
+        // CC (rhoHV) should remain in a tight unitless range; map bins directly.
+        if (raw <= 1) {
+          out[i] = NaN;
+        } else {
+          const t = Math.max(0, Math.min(1, (raw - 2.0) / 253.0));
+          out[i] = vmin + t * (vmax - vmin);
+        }
+      } else if (shouldUseCenteredDecode) {
         // Some N0G/N0S packet-16 files omit usable threshold words.
         // Use the canonical centered decode so inbound (negative) bins survive.
         out[i] = (raw - 129.0) / 2.0;
@@ -2003,6 +2103,13 @@ function mapL3RawLevels(data, sweep, vmin, vmax, product = 'reflectivity') {
     for (let i = 0; i < data.length; i++) {
       const raw = data[i];
       if (isNaN(raw)) { out[i] = NaN; continue; }
+
+      if (product === 'cc') {
+        // Legacy CC bins are 1..15; map uniformly into configured rhoHV range.
+        const t = Math.max(0, Math.min(1, (raw - 1.0) / 14.0));
+        out[i] = vmin + t * range;
+        continue;
+      }
 
       if (isBipolar) {
         // Map full range 1-15 across vmin to vmax for symmetric bipolar products

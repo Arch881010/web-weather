@@ -7,12 +7,15 @@ let radarLastKey = null;
 let radarLastSite = null;
 let radarLastProduct = null;
 let radarLastCmap = null;
+let radarLastTilt = null;
 let radarNeedsInitialForce = true;
 let radarActiveMode = null;
 let radarFetchController = null; // AbortController for in-flight fetch
 let radarInFlightParams = null;  // { site, product } of the current in-flight fetch
+let radarAvailableTilts = [];    // Array of { elevNum, radialCount, angleLabel }
 const RADAR_SWEEP_CACHE = new Map();
 const RADAR_SWEEP_CACHE_TTL_MS = 0.5 * 60 * 1000; // 30 s
+const RADAR_TILTS_CACHE = new Map();  // Permanent cache for available tilts by site:product
 const RADAR_SITE_FAILURE_THRESHOLD = 3;
 const radarSiteFailureCounts = {};
 const radarSiteFailureNotified = new Set();
@@ -22,6 +25,7 @@ let radarHoverEnabled = false;
 const DEFAULT_COLORMAPS = {
     reflectivity: "NWSRef",
     velocity: "NWSVel",
+    nrot: "NWSRef",
     srv: "NWSVel",
     cc: "NWSCC",
     classification: "N/A",
@@ -39,13 +43,19 @@ const BUILTIN_COLORMAP_OPTIONS = {
         { value: "BlueRed",        label: "Blue-Red" },
         { value: "PurpleOrange",   label: "Purple-Orange" },
     ],
+    nrot: [
+        { value: "NWSRef",         label: "NWSRef" },
+        { value: "HomeyerRainbow", label: "HomeyerRainbow" },
+        { value: "turbo",          label: "Turbo" },
+        { value: "viridis",        label: "Viridis" },
+    ],
     srv: [
         { value: "NWSVel",         label: "NWSVel (Green-Red)" },
         { value: "BlueRed",        label: "Blue-Red" },
         { value: "PurpleOrange",   label: "Purple-Orange" },
     ],
     cc: [
-        { value: "NWSCC",     label: "NWSCC (Default)" },
+        { value: "NWSCC",     label: "NWScc (NWS Default)" },
         { value: "Spectral",  label: "Spectral" },
     ],
     classification: [
@@ -55,16 +65,59 @@ const BUILTIN_COLORMAP_OPTIONS = {
 
 let customColormaps = {};
 
+function normalizeLegacyCcColormapMap(product, cmapData) {
+    if (product !== "cc" || !cmapData || !Array.isArray(cmapData.stops) || cmapData.stops.length === 0) {
+        return { changed: false, cmapData };
+    }
+
+    // Legacy bug path: CC .pal with Scale imported as velocity and normalized to ~0.28..1.0.
+    if (cmapData.type === "velocity") {
+        const numericStops = cmapData.stops.filter(s => Array.isArray(s) && Number.isFinite(s[0]));
+        if (numericStops.length === cmapData.stops.length) {
+            const minT = Math.min(...numericStops.map(s => s[0]));
+            const maxT = Math.max(...numericStops.map(s => s[0]));
+            if (minT >= 0 && maxT <= 1.2) {
+                const converted = numericStops
+                    .slice()
+                    .sort((a, b) => a[0] - b[0])
+                    .map(s => [Math.max(0.0, Math.min(1.05, s[0] * 1.05)), s[1], s[2], s[3], 200]);
+                return { changed: true, cmapData: { type: "stepped", stops: converted } };
+            }
+        }
+    }
+
+    // Percent-like stepped thresholds (e.g., 28..105) should be rhoHV (0.28..1.05).
+    if (cmapData.type === "stepped") {
+        const numericStops = cmapData.stops.filter(s => Array.isArray(s) && Number.isFinite(s[0]));
+        if (numericStops.length === cmapData.stops.length) {
+            const maxV = Math.max(...numericStops.map(s => s[0]));
+            if (maxV > 2) {
+                const converted = numericStops.map(s => [s[0] / 100.0, s[1], s[2], s[3], s[4] ?? 200]);
+                return { changed: true, cmapData: { ...cmapData, stops: converted } };
+            }
+        }
+    }
+
+    return { changed: false, cmapData };
+}
+
 function loadCustomColormaps() {
     try {
         const stored = localStorage.getItem("radarCustomColormaps");
         if (stored) {
             customColormaps = JSON.parse(stored);
+            let migrated = false;
             for (const product of Object.keys(customColormaps)) {
                 for (const name of Object.keys(customColormaps[product])) {
+                    const result = normalizeLegacyCcColormapMap(product, customColormaps[product][name]);
+                    if (result.changed) {
+                        customColormaps[product][name] = result.cmapData;
+                        migrated = true;
+                    }
                     registerCustomColormap(name, customColormaps[product][name]);
                 }
             }
+            if (migrated) saveCustomColormaps();
         }
     } catch (e) {
         console.warn("Failed to load custom colormaps:", e);
@@ -109,30 +162,60 @@ function setColormapForProduct(product, colormap) {
 function getAvailableColormaps(product) {
     const normalized = normalizeRadarProduct(product);
     const builtins = BUILTIN_COLORMAP_OPTIONS[normalized] || BUILTIN_COLORMAP_OPTIONS.reflectivity;
-    const result = [...builtins];
+    const builtinValues = new Set(builtins.map((b) => b.value.toLowerCase()));
+
+    const custom = [];
     if (customColormaps[normalized]) {
-        for (const name of Object.keys(customColormaps[normalized])) {
-            result.push({ value: name, label: name + " (Custom)" });
+        const names = Object.keys(customColormaps[normalized]).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        for (const name of names) {
+            // Avoid duplicate entries if a custom map uses the same name as a builtin.
+            if (builtinValues.has(name.toLowerCase())) continue;
+            custom.push({ value: name, label: name + " (Custom)" });
         }
     }
-    return result;
+
+    return { builtins, custom };
 }
 
 function updateColormapDropdown(product) {
     const select = document.getElementById("radar-cmap");
     if (!select) return;
+
     const normalized = normalizeRadarProduct(product || config.radarApi?.product || "reflectivity");
-    const options = getAvailableColormaps(normalized);
+    const { builtins, custom } = getAvailableColormaps(normalized);
     const current = getColormapForProduct(normalized);
+
     select.innerHTML = "";
-    options.forEach((opt) => {
+
+    const builtinsGroup = document.createElement("optgroup");
+    builtinsGroup.label = "Built-in";
+    builtins.forEach((opt) => {
         const option = document.createElement("option");
         option.value = opt.value;
         option.textContent = opt.label;
         if (opt.value === current) option.selected = true;
-        select.appendChild(option);
+        builtinsGroup.appendChild(option);
     });
-    if (!select.value) select.selectedIndex = 0;
+    select.appendChild(builtinsGroup);
+
+    if (custom.length) {
+        const customGroup = document.createElement("optgroup");
+        customGroup.label = "Custom";
+        custom.forEach((opt) => {
+            const option = document.createElement("option");
+            option.value = opt.value;
+            option.textContent = opt.label;
+            if (opt.value === current) option.selected = true;
+            customGroup.appendChild(option);
+        });
+        select.appendChild(customGroup);
+    }
+
+    if (!select.value) {
+        const fallback = builtins[0]?.value || DEFAULT_COLORMAPS[normalized] || "NWSRef";
+        select.value = fallback;
+        setColormapForProduct(normalized, fallback);
+    }
 }
 
 async function importColormapFromFile(product, file) {
@@ -140,6 +223,7 @@ async function importColormapFromFile(product, file) {
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
+                const normalizedProduct = normalizeRadarProduct(product);
                 const text = e.target.result;
                 const isPal = /\.pal$/i.test(file.name);
                 let name, cmapData;
@@ -153,7 +237,10 @@ async function importColormapFromFile(product, file) {
                         const prodMatch = ln.match(/^Product:\s*(\S+)/i);
                         if (prodMatch) palProduct = prodMatch[1].toUpperCase();
                     }
-                    const isVelocityPal = scale != null || (palProduct && /^(BV|SRV|SRM|VEL|V)$/i.test(palProduct));
+                    const palDeclaresVelocity = !!(palProduct && /^(BV|SRV|SRM|VEL|V)$/i.test(palProduct));
+                    const contextIsVelocity = normalizedProduct === "velocity" || normalizedProduct === "srv";
+                    const contextIsCc = normalizedProduct === "cc";
+                    const palDeclaresCc = !!(palProduct && /^(CC|RHO|RHOHV)$/i.test(palProduct));
                     const colorEntries = [];
                     for (const ln of lines) {
                         const rfMatch = ln.match(/^RF:\s*(\d+)\s+(\d+)\s+(\d+)/i);
@@ -170,6 +257,7 @@ async function importColormapFromFile(product, file) {
                     if (!colorEntries.length) throw new Error("Invalid .pal file: no Color lines found");
                     const hasDbz = colorEntries.every(e => e.dbz !== null);
                     let stops, cmapType;
+                    const isVelocityPal = hasDbz && (palDeclaresVelocity || contextIsVelocity);
                     if (isVelocityPal && hasDbz) {
                         const absMax = Math.max(...colorEntries.map(e => Math.abs(e.dbz)));
                         const normMax = absMax || 150;
@@ -177,7 +265,9 @@ async function importColormapFromFile(product, file) {
                         stops = colorEntries.map(e => [e.dbz / normMax, e.r, e.g, e.b]);
                         cmapType = "velocity";
                     } else if (hasDbz) {
-                        stops = colorEntries.map(e => [e.dbz, e.r, e.g, e.b, 200]);
+                        const shouldScaleCc = (contextIsCc || palDeclaresCc) && Number.isFinite(scale) && scale > 1;
+                        const thresholdDivisor = shouldScaleCc ? scale : 1;
+                        stops = colorEntries.map(e => [e.dbz / thresholdDivisor, e.r, e.g, e.b, 200]);
                         cmapType = "stepped";
                     } else {
                         stops = colorEntries.map((e, idx) => {
@@ -239,7 +329,7 @@ function exportColormap(product, colormapName) {
         if (sorted.length >= 2) lines.push(`Step: ${Math.abs(Math.round((sorted[1][0] - sorted[0][0]) / normMax * 150)) || 1}`);
         for (const s of sorted) lines.push(`Color: ${Math.round((s[0] / normMax) * 150)} ${s[1]} ${s[2]} ${s[3]}`);
     } else if (cmapData.type === "interpolated") {
-        const defaultRanges = { reflectivity: [-20, 80], velocity: [-60, 60], srv: [-60, 60], cc: [0, 1.05] };
+        const defaultRanges = { reflectivity: [-20, 80], velocity: [-60, 60], srv: [-60, 60], cc: [0.28, 1.05] };
         const colorbarRange = (typeof getColorbarRange === "function") ? getColorbarRange() : {};
         const range = defaultRanges[normalized] || [-20, 80];
         const vmin = colorbarRange.vmin != null ? colorbarRange.vmin : range[0];
@@ -413,10 +503,12 @@ function _formatScanTime(sweepData) {
 // Products available regardless of level (NexradClient handles routing internally)
 
 const AVAILABLE_PRODUCTS = [
-    { value: "reflectivity",   label: "Reflectivity" },
-    { value: "velocity",       label: "Velocity" },
-    { value: "srv",            label: "SRV" },
-    { value: "classification", label: "Classification" },
+    { value: "reflectivity",   label: "Reflectivity", group: "Standard" },
+    { value: "velocity",       label: "Velocity", group: "Standard" },
+    { value: "srv",            label: "SRV", group: "Dual-Pol" },
+    { value: "nrot",           label: "NROT", group: "Dual-Pol" },
+    { value: "cc",             label: "CC", group: "Dual-Pol" },
+    { value: "classification", label: "Classification", group: "Classification" },
 ];
 
 const LEVEL2_PRODUCTS = new Set(["reflectivity", "velocity"]);
@@ -426,12 +518,26 @@ function isTdwrSite(site) {
     return code.length === 4 && code.startsWith("T");
 }
 
+function getDisabledRadarProducts() {
+    const disabled = config?.radarApi?.disabledProducts;
+    if (!Array.isArray(disabled)) return new Set();
+    return new Set(disabled.map((p) => normalizeRadarProduct(String(p || "").trim())));
+}
+
 function getAvailableProductsForSite(site, levelOverride = getRadarLevel()) {
     const level = Number(levelOverride) || 2;
     let products = AVAILABLE_PRODUCTS;
 
     if (level === 2) {
         products = products.filter((p) => LEVEL2_PRODUCTS.has(p.value));
+    }
+
+    const disabled = getDisabledRadarProducts();
+    products = products.filter((p) => !disabled.has(p.value));
+
+    // Fail-safe: avoid an empty product list from breaking selectors.
+    if (products.length === 0) {
+        products = AVAILABLE_PRODUCTS.filter((p) => p.value === "reflectivity");
     }
 
     return products;
@@ -466,26 +572,54 @@ function syncProductDropdownsToLevel(siteOverride = config.radarApi?.site) {
     const settingsSelect = document.getElementById("radar-site-product");
     if (settingsSelect) {
         settingsSelect.innerHTML = "";
+        const groups = new Map();
         products.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.value;
-            opt.textContent = p.label;
-            if (p.value === currentProduct) opt.selected = true;
-            settingsSelect.appendChild(opt);
+            const groupName = p.group || "Other";
+            if (!groups.has(groupName)) groups.set(groupName, []);
+            groups.get(groupName).push(p);
         });
+
+        for (const [groupName, groupProducts] of groups) {
+            const optgroup = document.createElement("optgroup");
+            optgroup.label = groupName;
+            groupProducts.forEach(p => {
+                const opt = document.createElement("option");
+                opt.value = p.value;
+                opt.textContent = p.label;
+                if (p.value === currentProduct) opt.selected = true;
+                optgroup.appendChild(opt);
+            });
+            settingsSelect.appendChild(optgroup);
+        }
     }
 
     const statusSelect = document.getElementById("status-product-switch");
     if (statusSelect) {
         statusSelect.innerHTML = "";
+        const groups = new Map();
         products.forEach(p => {
-            const opt = document.createElement("option");
-            opt.value = p.value;
-            opt.textContent = p.label;
-            if (p.value === currentProduct) opt.selected = true;
-            statusSelect.appendChild(opt);
+            const groupName = p.group || "Other";
+            if (!groups.has(groupName)) groups.set(groupName, []);
+            groups.get(groupName).push(p);
         });
+
+        for (const [groupName, groupProducts] of groups) {
+            const optgroup = document.createElement("optgroup");
+            optgroup.label = groupName;
+            groupProducts.forEach(p => {
+                const opt = document.createElement("option");
+                opt.value = p.value;
+                opt.textContent = p.label;
+                if (p.value === currentProduct) opt.selected = true;
+                optgroup.appendChild(opt);
+            });
+            statusSelect.appendChild(optgroup);
+        }
     }
+
+    // Update tilt dropdown with cached tilts for this site:product
+    const tiltCacheKey = `${(siteOverride || "").toUpperCase()}:${currentProduct}`;
+    updateTiltDropdown([], tiltCacheKey);
 }
 
 function _buildRadarStatusHTML(scanTimeStr, product, site) {
@@ -494,10 +628,14 @@ function _buildRadarStatusHTML(scanTimeStr, product, site) {
     const levelLabel = radarLevel === 3 ? "Level 3" : "Level 2";
     const levelTitle = radarLevel === 3 ? "Level 3" : "Base Reflectivity (Level II)";
     const levelTag = `<span class="status-level-badge" title="${levelTitle}">${levelLabel}</span>`;
-    const options = getAvailableProductsForSite(site, radarLevel).map((p) => {
+    
+    const products = getAvailableProductsForSite(site, radarLevel);
+    let options = "";
+    products.forEach(p => {
         const sel = p.value === product ? " selected" : "";
-        return `<option value="${p.value}"${sel}>${p.label}</option>`;
-    }).join("");
+           options += `<option value="${p.value}"${sel}>${p.label}</option>`;
+    });
+
     return (
         `Radar: ${scanTimeStr} | ` +
         `<select id="status-product-switch" title="Switch radar product">${options}</select>` +
@@ -522,6 +660,78 @@ function _bindStatusProductSwitch() {
     });
 }
 
+    function getTiltLabel(elevNum) {
+        // WSR-88D standard tilt angles (approximate)
+        // These are typical VCP (Volume Coverage Pattern) tilts
+        const tiltMap = {
+            0: "0.5° (Tilt 1)",
+            1: "1.5° (Tilt 2)", 
+            2: "2.5° (Tilt 3)",
+            3: "3.5° (Tilt 4)",
+            4: "4.5° (Tilt 5)",
+            5: "5.5° (Tilt 6)",
+            6: "6.5° (Tilt 7)",
+            7: "8.0° (Tilt 8)",
+            8: "10.0° (Tilt 9)",
+            9: "12.0° (Tilt 10)",
+            10: "14.0° (Tilt 11)",
+            11: "16.7° (Tilt 12)",
+            12: "19.5° (Tilt 13)",
+        };
+    
+        if (tiltMap[elevNum]) {
+            return tiltMap[elevNum];
+        }
+    
+        // Fallback: calculate approximate angle
+        const angleLabel = (elevNum * 0.43 + 0.58).toFixed(1);
+        return `${angleLabel}°`;
+    }
+
+function updateTiltDropdown(elevations = [], cacheKey = null) {
+    const tiltSelect = document.getElementById("radar-site-tilt");
+    if (!tiltSelect) return;
+
+    // Store in permanent cache if cacheKey provided
+    if (cacheKey && elevations && elevations.length > 0) {
+        RADAR_TILTS_CACHE.set(cacheKey, elevations);
+    }
+
+    // If no elevations passed but cache exists, use cached tilts
+    let tiltsToDisplay = elevations;
+    if ((!tiltsToDisplay || tiltsToDisplay.length === 0) && cacheKey && RADAR_TILTS_CACHE.has(cacheKey)) {
+        tiltsToDisplay = RADAR_TILTS_CACHE.get(cacheKey);
+    }
+
+    const savedTilt = config.radarApi?.tilt ?? "";
+    tiltSelect.innerHTML = '<option value="">Auto (Best)</option>';
+
+    const hasElevations = tiltsToDisplay && tiltsToDisplay.length > 0;
+    tiltSelect.disabled = !hasElevations;
+    tiltSelect.title = hasElevations ? "Select a radar tilt/elevation angle" : "Only available for Level 2 (Base Reflectivity). Switch data level to enable.";
+
+    tiltsToDisplay.forEach(({ elevNum, radialCount }) => {
+           const tiltLabel = getTiltLabel(elevNum);
+           const opt = document.createElement("option");
+           opt.value = elevNum.toString();
+           opt.textContent = `${tiltLabel} (${radialCount} rays)`;
+        if (savedTilt === elevNum.toString()) opt.selected = true;
+        tiltSelect.appendChild(opt);
+    });
+}
+
+function _bindTiltSelector() {
+    const tiltSelect = document.getElementById("radar-site-tilt");
+    if (!tiltSelect) return;
+    // When tilt changes, clear cached selection and trigger re-render
+    tiltSelect.addEventListener("change", (e) => {
+        if (!config.radarApi) config.radarApi = {};
+        config.radarApi.tilt = e.target.value;
+        localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+        updateRadarLayer();
+    });
+}
+
 function normalizeRadarProduct(product) {
     const value = (product || "").trim().toLowerCase();
     const aliases = {
@@ -529,6 +739,7 @@ function normalizeRadarProduct(product) {
         "n0q": "reflectivity", "n0r": "reflectivity",
         "srv": "srv", "srm": "srv",
         "velocity": "velocity", "vel": "velocity", "v": "velocity",
+        "nrot": "nrot", "rot": "nrot",
         "cc": "cc",
         "classification": "classification", "class": "classification",
         "hydrometeor": "classification",
@@ -540,6 +751,7 @@ function normalizeRadarProduct(product) {
 function radarProductLabel(product) {
     const labels = {
         reflectivity: "Reflectivity", velocity: "Velocity",
+        nrot: "NROT",
         srv: "SRV", cc: "CC", classification: "Hydrometeor Classification",
     };
     return labels[normalizeRadarProduct(product)] || "Reflectivity";
@@ -593,6 +805,7 @@ function updateSelectedRadarLabel(site) {
 /**
  * Fetch sweep data directly from S3/NOMADS via NexradClient.
  * Returns the same envelope as the old /api/radar/sweep endpoint.
+ * Nowsupports optional tilt (elevation) selection.
  *
  * AbortController signals are not directly supported by NexradClient's fetch()
  * calls, but we honour cancellation by checking the signal before returning.
@@ -600,7 +813,8 @@ function updateSelectedRadarLabel(site) {
 async function fetchSweepData(site, force = false, signal = null) {
     const level = config.radarApi?.level || 3;
     const product = normalizeProductForSite(config.radarApi?.product || "reflectivity", site, level);
-    const cacheKey = `${site.toUpperCase()}:${product}:L${level}`;
+    const requestedTilt = config.radarApi?.tilt ? Number(config.radarApi.tilt) : null;
+    const cacheKey = `${site.toUpperCase()}:${product}:L${level}:T${requestedTilt ?? 'auto'}`;
 
     // Browser-side sweep cache (separate from NexradClient's internal cache)
     if (!force) {
@@ -611,7 +825,7 @@ async function fetchSweepData(site, force = false, signal = null) {
         }
     }
 
-    const data = await _nexradClient.getSweep(site, product, { force, level });
+    const data = await _nexradClient.getSweep(site, product, { force, level, requestedElevNum: requestedTilt });
 
     if (signal && signal.aborted) {
         throw Object.assign(new Error("AbortError"), { name: "AbortError" });
@@ -722,6 +936,9 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
                 true
             );
             _bindStatusProductSwitch();
+            const tiltCacheKey = `${resolvedSite}:${resolvedProduct}`;
+            updateTiltDropdown(sweepData.availableElevations || [], tiltCacheKey);
+            _bindTiltSelector();
             return true;
         }
 
@@ -739,6 +956,9 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
             true
         );
         _bindStatusProductSwitch();
+        const tiltCacheKey2 = `${resolvedSite}:${resolvedProduct}`;
+        updateTiltDropdown(sweepData.availableElevations || [], tiltCacheKey2);
+        _bindTiltSelector();
         return true;
 
     } catch (error) {

@@ -481,6 +481,13 @@ body.settings-open #radar-colorbar {
     color: white;
 }
 
+.setting-item select optgroup {
+    background-color: #1a1a1a;
+    color: #ffffff;
+    font-style: normal;
+    font-weight: 600;
+}
+
 /* Colormap controls row */
 .cmap-controls {
     display: flex;

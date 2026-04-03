@@ -80,6 +80,13 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (typeof updateColormapDropdown === "function") {
 				updateColormapDropdown(productSelect.value);
 			}
+			// Update tilt selector with cached tilts for new product
+			if (typeof updateTiltDropdown === "function") {
+				const site = (config.radarApi?.site || "").toUpperCase();
+				const product = productSelect.value;
+				const tiltCacheKey = `${site}:${product}`;
+				updateTiltDropdown([], tiltCacheKey);
+			}
 		});
 	}
 

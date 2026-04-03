@@ -84,17 +84,18 @@ const PURPLE_ORANGE_VEL_STOPS = [
 ];
 
 const CC_COLORS = [
-    [0.20,   0,   0,   0, 150],
-    [0.40, 100, 100, 100, 180],
-    [0.60, 176, 196, 222, 200],
-    [0.70,   0, 191, 255, 200],
-    [0.80,   0, 128, 255, 200],
-    [0.85,   0, 255,   0, 200],
-    [0.90, 255, 255,   0, 200],
-    [0.95, 255, 165,   0, 200],
-    [0.97, 255,   0,   0, 200],
-    [1.00, 255,   0, 255, 200],
-    [1.05, 255, 255, 255, 200],
+    // Converted from a % scale palette:
+    // Product: CC, Units: %, Scale: 100, Step: 10
+    [0.28, 119, 119, 140, 200],
+    [0.35,  43,  40, 113, 200],
+    [0.45, 150, 145, 179, 200],
+    [0.60, 249, 252, 245, 200],
+    [0.70, 135, 254,  88, 200],
+    [0.85, 242, 193,   0, 200],
+    [0.90, 255,  33,   0, 200],
+    [1.00, 154,  29,  60, 200],
+    [1.005,254, 233, 249, 200],
+    [1.05, 106,  77, 118, 200],
 ];
 
 // Each stop: [t (0..1), R, G, B]
@@ -226,7 +227,7 @@ function getBuiltinColormapData(product, colormapName) {
         const stops = BUILTIN_CC_CMAPS[key];
         if (stops) return { type: "stepped", stops };
     }
-    if (norm === "reflectivity") {
+    if (norm === "reflectivity" || norm === "nrot") {
         if (key === "nwsref")          return { type: "stepped",      stops: NWS_REF_COLORS };
         if (key === "turbo")           return { type: "interpolated", stops: TURBO_STOPS };
         if (key === "viridis")         return { type: "interpolated", stops: VIRIDIS_STOPS };
@@ -243,6 +244,21 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
     const lut = new Uint8ClampedArray(256 * 4);
     const cmapKey = (cmap || "").toLowerCase();
 
+    // Built-ins take precedence so imported/custom maps cannot shadow names
+    // like NWSCC/NWSRef/NWSVel and change interpretation unexpectedly.
+    const builtin = getBuiltinColormapData(product, cmap);
+    if (builtin) {
+        if (builtin.type === "velocity") {
+            _buildVelocityLUT(lut, vmin, vmax, builtin.stops);
+        } else if (builtin.type === "interpolated") {
+            _buildInterpolatedLUT(lut, builtin.stops, builtin.alpha || 200);
+        } else {
+            _buildSteppedLUT(lut, builtin.stops, vmin, vmax, true);
+        }
+        lut[255 * 4 + 3] = 0;
+        return lut;
+    }
+
     // Check custom registry first (works for any product)
     const custom = getRegisteredColormap(cmap) || getRegisteredColormap(cmapKey);
     if (custom) {
@@ -251,7 +267,7 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
         } else if (custom.type === "interpolated") {
             _buildInterpolatedLUT(lut, custom.stops, custom.alpha || 200);
         } else {
-            _buildSteppedLUT(lut, custom.stops, vmin, vmax);
+            _buildSteppedLUT(lut, custom.stops, vmin, vmax, true);
         }
         lut[255 * 4 + 3] = 0;
         return lut;
@@ -262,10 +278,10 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
         _buildVelocityLUT(lut, vmin, vmax, velStops);
     } else if (product === "cc") {
         const ccStops = BUILTIN_CC_CMAPS[cmapKey] || CC_COLORS;
-        _buildSteppedLUT(lut, ccStops, vmin, vmax);
+        _buildSteppedLUT(lut, ccStops, vmin, vmax, true);
     } else if (product === "classification") {
         _buildClassificationLUT(lut, vmin, vmax);
-    } else if (product === "reflectivity") {
+    } else if (product === "reflectivity" || product === "nrot") {
         if (cmapKey === "turbo") {
             _buildInterpolatedLUT(lut, TURBO_STOPS, 200);
         } else if (cmapKey === "viridis") {
@@ -273,7 +289,7 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
         } else if (cmapKey === "homeyerrainbow") {
             _buildInterpolatedLUT(lut, HOMEYER_STOPS, 200);
         } else {
-            _buildSteppedLUT(lut, NWS_REF_COLORS, vmin, vmax);
+            _buildSteppedLUT(lut, NWS_REF_COLORS, vmin, vmax, true);
         }
     } else {
         // fallback: grayscale
@@ -317,23 +333,50 @@ function _buildClassificationLUT(lut, vmin, vmax) {
     lut[255 * 4 + 3] = 0;
 }
 
-function _buildSteppedLUT(lut, stops, vmin, vmax) {
+function _buildSteppedLUT(lut, stops, vmin, vmax, smooth = false) {
+    if (!Array.isArray(stops) || stops.length === 0) {
+        lut[255 * 4 + 3] = 0;
+        return;
+    }
+
+    const sortedStops = [...stops].sort((a, b) => a[0] - b[0]);
+
     for (let i = 0; i < 255; i++) {
         const physVal = vmin + (i / 254) * (vmax - vmin);
-        let matched = false;
-        for (let s = stops.length - 1; s >= 0; s--) {
-            if (physVal >= stops[s][0]) {
-                lut[i * 4]     = stops[s][1];
-                lut[i * 4 + 1] = stops[s][2];
-                lut[i * 4 + 2] = stops[s][3];
-                lut[i * 4 + 3] = Math.min(255, Math.round(stops[s][4] * 1.2));
-                matched = true;
+        if (physVal < sortedStops[0][0]) {
+            lut[i * 4 + 3] = 0;
+            continue;
+        }
+
+        let lo = sortedStops.length - 1;
+        for (let s = 0; s < sortedStops.length; s++) {
+            if (physVal < sortedStops[s][0]) {
+                lo = Math.max(0, s - 1);
                 break;
             }
         }
-        if (!matched) {
-            lut[i * 4 + 3] = 0;
+
+        const hi = Math.min(sortedStops.length - 1, lo + 1);
+        const loStop = sortedStops[lo];
+        const hiStop = sortedStops[hi];
+
+        let t = 0;
+        if (smooth && hi > lo) {
+            const span = hiStop[0] - loStop[0];
+            t = span > 0 ? Math.max(0, Math.min(1, (physVal - loStop[0]) / span)) : 0;
         }
+
+        const r = Math.round(loStop[1] + (hiStop[1] - loStop[1]) * t);
+        const g = Math.round(loStop[2] + (hiStop[2] - loStop[2]) * t);
+        const b = Math.round(loStop[3] + (hiStop[3] - loStop[3]) * t);
+        const aLo = loStop[4] ?? 200;
+        const aHi = hiStop[4] ?? aLo;
+        const a = Math.min(255, Math.round((aLo + (aHi - aLo) * t) * 1.2));
+
+        lut[i * 4] = r;
+        lut[i * 4 + 1] = g;
+        lut[i * 4 + 2] = b;
+        lut[i * 4 + 3] = a;
     }
 }
 
@@ -499,7 +542,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const baseProd = this._sweepData.product;
         let units = "";
         if (baseProd === "reflectivity") units = "dBZ";
-        else if (baseProd === "velocity" || baseProd === "srv") units = "m/s";
+        else if (baseProd === "velocity" || baseProd === "srv" || baseProd === "nrot") units = "m/s";
         else if (baseProd === "cc") units = "ρHV";
 
         return { product: this._sweepData.product, value: physical, units };
@@ -811,7 +854,7 @@ function _colorbarMouseMove(e) {
 
     const baseProd = _colorbarProduct;
     let text;
-    if (baseProd === "velocity" || baseProd === "srv") {
+    if (baseProd === "velocity" || baseProd === "srv" || baseProd === "nrot") {
         const mph = val * 2.23694;
         text = `${val.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
     } else if (baseProd === "cc") {
