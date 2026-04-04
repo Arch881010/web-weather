@@ -475,6 +475,17 @@ const RadarCanvasLayer = L.GridLayer.extend({
             sweepData.firstGateRange + sweepData.numGates * sweepData.gateWidth;
         this._noData = sweepData.noDataValue || 255;
 
+        this._azimuths = Array.isArray(sweepData.azimuths)
+            ? sweepData.azimuths.map((a) => {
+                const n = Number(a);
+                return Number.isFinite(n) ? ((n % 360) + 360) % 360 : 0;
+            })
+            : [];
+        this._sortedAzimuthPairs = this._azimuths
+            .map((az, idx) => ({ az, idx }))
+            .sort((a, b) => a.az - b.az);
+        this._useActualAzimuthLookup = this._shouldUseActualAzimuthLookup();
+
         // Simple azimuth step for nearest-neighbor lookup
         this._azStep = 360 / this._numRadials;
         this._azOffset = sweepData.azimuths[0] || 0;
@@ -503,6 +514,53 @@ const RadarCanvasLayer = L.GridLayer.extend({
         L.GridLayer.prototype.initialize.call(this, options);
     },
 
+    _shouldUseActualAzimuthLookup: function () {
+        if (!Array.isArray(this._azimuths) || this._azimuths.length < 4) return false;
+
+        const n = this._azimuths.length;
+        const expected = 360 / n;
+        let maxDiff = 0;
+        const pairs = this._sortedAzimuthPairs;
+
+        for (let i = 0; i < n; i++) {
+            const a0 = pairs[i].az;
+            const a1 = pairs[(i + 1) % n].az;
+            const step = ((a1 - a0 + 360) % 360) || expected;
+            const diff = Math.abs(step - expected);
+            if (diff > maxDiff) maxDiff = diff;
+            if (maxDiff > 0.35) return true;
+        }
+
+        return false;
+    },
+
+    _findNearestRadialIndex: function (azimuth) {
+        if (!this._useActualAzimuthLookup || this._azimuths.length !== this._numRadials) {
+            let radial = Math.round((azimuth - this._azOffset) / this._azStep);
+            radial = ((radial % this._numRadials) + this._numRadials) % this._numRadials;
+            return radial;
+        }
+
+        const pairs = this._sortedAzimuthPairs;
+        const n = pairs.length;
+
+        let lo = 0;
+        let hi = n;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (pairs[mid].az < azimuth) lo = mid + 1;
+            else hi = mid;
+        }
+
+        const i1 = lo % n;
+        const i0 = (lo - 1 + n) % n;
+        const d0raw = Math.abs(azimuth - pairs[i0].az);
+        const d1raw = Math.abs(azimuth - pairs[i1].az);
+        const d0 = Math.min(d0raw, 360 - d0raw);
+        const d1 = Math.min(d1raw, 360 - d1raw);
+        return d0 <= d1 ? pairs[i0].idx : pairs[i1].idx;
+    },
+
     /**
      * Sample the underlying gate value at a given LatLng. Returns null when
      * outside coverage or when the gate is no-data.
@@ -510,11 +568,13 @@ const RadarCanvasLayer = L.GridLayer.extend({
     getValueAtLatLng: function (latlng) {
         if (!latlng) return null;
 
-        const metersPerDegLat = 111320;
-        const metersPerDegLon = 111320 * this._cosRadarLat;
-
-        const dx = (latlng.lng - this._radarLon) * metersPerDegLon;
-        const dy = (latlng.lat - this._radarLat) * metersPerDegLat;
+        const RAD = Math.PI / 180;
+        const EARTH_R = 6371000;
+        const dLat = (latlng.lat - this._radarLat) * RAD;
+        const dLon = (latlng.lng - this._radarLon) * RAD;
+        const meanLat = ((latlng.lat + this._radarLat) * 0.5) * RAD;
+        const dx = dLon * Math.cos(meanLat) * EARTH_R;
+        const dy = dLat * EARTH_R;
         const rangeSq = dx * dx + dy * dy;
         const maxRangeSq = this._maxRange * this._maxRange;
         if (rangeSq <= 0 || rangeSq > maxRangeSq) return null;
@@ -525,8 +585,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
 
         let az = (Math.atan2(dx, dy) * (180 / Math.PI));
         if (az < 0) az += 360;
-        let radial = Math.round((az - this._azOffset) / this._azStep);
-        radial = ((radial % this._numRadials) + this._numRadials) % this._numRadials;
+        const radial = this._findNearestRadialIndex(az);
 
         const idx = radial * this._numGates + gateIdx;
         const val = this._gateData[idx];
@@ -559,6 +618,8 @@ const RadarCanvasLayer = L.GridLayer.extend({
     _renderTile: function (ctx, coords) {
         const TILE = 256;
         const map = this._map;
+        const RAD = Math.PI / 180;
+        const EARTH_R = 6371000;
 
         // Tile pixel bounds → lat/lon
         const nwPoint = L.point(coords.x * TILE, coords.y * TILE);
@@ -573,14 +634,15 @@ const RadarCanvasLayer = L.GridLayer.extend({
 
         // Quick rejection: tile corners vs radar max range
         const maxRangeM = this._maxRange;
-        const metersPerDegLat = 111320;
-        const metersPerDegLon = 111320 * this._cosRadarLat;
 
         // Nearest point on tile rect to radar center
         const nearLat = Math.max(south, Math.min(north, this._radarLat));
         const nearLon = Math.max(west, Math.min(east, this._radarLon));
-        const ndx = (nearLon - this._radarLon) * metersPerDegLon;
-        const ndy = (nearLat - this._radarLat) * metersPerDegLat;
+        const ndLat = (nearLat - this._radarLat) * RAD;
+        const ndLon = (nearLon - this._radarLon) * RAD;
+        const ndMeanLat = ((nearLat + this._radarLat) * 0.5) * RAD;
+        const ndx = ndLon * Math.cos(ndMeanLat) * EARTH_R;
+        const ndy = ndLat * EARTH_R;
         if (ndx * ndx + ndy * ndy > maxRangeM * maxRangeM) {
             return; // tile entirely outside radar range
         }
@@ -588,8 +650,12 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const imageData = ctx.createImageData(TILE, TILE);
         const pixels = imageData.data;
 
-        const latStep = (north - south) / TILE;
         const lonStep = (east - west) / TILE;
+        const rowLats = new Float64Array(TILE);
+        for (let py = 0; py < TILE; py++) {
+            const y = coords.y * TILE + py + 0.5;
+            rowLats[py] = map.unproject(L.point(nwPoint.x + 0.5, y), coords.z).lat;
+        }
 
         const radarLat = this._radarLat;
         const radarLon = this._radarLon;
@@ -613,12 +679,15 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const useInterp = false;
 
         for (let py = 0; py < TILE; py++) {
-            const lat = north - (py + 0.5) * latStep;
-            const dy = (lat - radarLat) * metersPerDegLat;
+            const lat = rowLats[py];
+            const dLat = (lat - radarLat) * RAD;
+            const dy = dLat * EARTH_R;
+            const cosMeanLat = Math.cos(((lat + radarLat) * 0.5) * RAD);
 
             for (let px = 0; px < TILE; px++) {
                 const lon = west + (px + 0.5) * lonStep;
-                const dx = (lon - radarLon) * metersPerDegLon;
+                const dLon = (lon - radarLon) * RAD;
+                const dx = dLon * cosMeanLat * EARTH_R;
 
                 const rangeSq = dx * dx + dy * dy;
                 if (rangeSq > maxRangeSq || rangeSq < firstRangeSq) continue;
@@ -673,8 +742,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
                     // ── Nearest-neighbor for classification (categorical) ──
                     const gateIdx = gateF | 0;
                     if (gateIdx >= numGates) continue;
-                    let azIdx = Math.round(azF) % numRadials;
-                    if (azIdx < 0) azIdx += numRadials;
+                    const azIdx = this._findNearestRadialIndex(azimuth);
                     val = gateData[azIdx * numGates + gateIdx];
                     if (val === noData) continue;
                 }

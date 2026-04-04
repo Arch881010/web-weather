@@ -973,6 +973,35 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 		}
 	}
 
+	function normalizeIconFilename(filename) {
+		let value = String(filename || "").trim();
+		if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+			value = value.slice(1, -1).trim();
+		}
+		return value;
+	}
+
+	function buildSpriteIconElement(fileIdx, iconIdx, xOff, yOff, rotation, tooltip) {
+		const iconDef = iconFiles[fileIdx];
+		if (!iconDef) return null;
+		const maxIcons = Math.max(1, iconDef.columns * iconDef.rows);
+		const oneBasedIndex = Number.isFinite(iconIdx) ? Math.floor(iconIdx) : 1;
+		const spriteIndex = Math.max(0, Math.min(maxIcons - 1, oneBasedIndex - 1));
+		const col = spriteIndex % iconDef.columns;
+		const row = Math.floor(spriteIndex / iconDef.columns);
+		const normalizedTooltip = String(tooltip || "").replace(/\\n/g, "\n");
+		return {
+			type: "icon",
+			xOff, yOff, rotation,
+			width: iconDef.width,
+			height: iconDef.height,
+			spriteX: col * iconDef.width,
+			spriteY: row * iconDef.height,
+			url: iconDef.url,
+			tooltip: normalizedTooltip,
+		};
+	}
+
 	function flushMultiLine() {
 		if (!mode) return;
 
@@ -1150,27 +1179,45 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 				if (tooltip) {
 					objectElements.push({ type: "icon-tooltip", tooltip });
 				}
-				// Store sprite icon element if we have the IconFile definition
-				const iconDef = iconFiles[fileIdx];
-				if (iconDef) {
-					const col = iconIdx % iconDef.columns;
-					const row = Math.floor(iconIdx / iconDef.columns);
-					objectElements.push({
-						type: "icon",
-						xOff, yOff, rotation,
-						width: iconDef.width,
-						height: iconDef.height,
-						spriteX: col * iconDef.width,
-						spriteY: row * iconDef.height,
-						url: iconDef.url,
-					});
-				}
+				const iconEl = buildSpriteIconElement(fileIdx, iconIdx, xOff, yOff, rotation, tooltip);
+				if (iconEl) objectElements.push(iconEl);
 			}
 			continue;
 		}
 
 		if (/^Title:\s*/i.test(trimmed)) {
 			title = trimmed.replace(/^Title:\s*/i, "").trim();
+			continue;
+		}
+
+		if (/^Icon:\s*/i.test(trimmed)) {
+			const iconMatch = trimmed.match(/^Icon:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
+			if (iconMatch) {
+				const lat = parseFloat(iconMatch[1]);
+				const lon = parseFloat(iconMatch[2]);
+				const rotation = parseFloat(iconMatch[3]);
+				const fileIdx = parseInt(iconMatch[4], 10);
+				const iconIdx = parseInt(iconMatch[5], 10);
+				const tooltip = String(iconMatch[6] || "").replace(/\\n/g, "\n");
+				const iconEl = buildSpriteIconElement(fileIdx, iconIdx, 0, 0, rotation, tooltip);
+				if (!isNaN(lat) && !isNaN(lon) && iconEl) {
+					const tooltipLines = tooltip ? tooltip.split("\n") : [];
+					const firstLine = tooltipLines[0] || "";
+					const remainingLines = tooltipLines.length > 1 ? tooltipLines.slice(1).join("\n") : "";
+					features.push({
+						type: "Feature",
+						geometry: { type: "Point", coordinates: [lon, lat] },
+						properties: {
+							"marker-type": "icon",
+							iconElements: [iconEl],
+							title: firstLine,
+							description: remainingLines,
+							name: firstLine,
+							popupButtonText: tooltip ? "Show Full Text" : undefined,
+						},
+					});
+				}
+			}
 			continue;
 		}
 
@@ -1202,7 +1249,6 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 			}
 			continue;
 		}
-
 		if (/^TimeRange:/i.test(trimmed) || /^Threshold:/i.test(trimmed)) {
 			continue;
 		}
@@ -1214,14 +1260,36 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 				const fileIndex = parseInt(ifMatch[1], 10);
 				const iconW = parseInt(ifMatch[2], 10);
 				const iconH = parseInt(ifMatch[3], 10);
-				const numCols = parseInt(ifMatch[4], 10);
-				const numRows = parseInt(ifMatch[5], 10);
-				const filename = ifMatch[6].trim();
+				let numCols = parseInt(ifMatch[4], 10);
+				let numRows = parseInt(ifMatch[5], 10);
+				const filename = normalizeIconFilename(ifMatch[6]);
+
+				// Generalized icon sheet grid normalization for known exceptions
+				// Map of known icon sheet URLs (or patterns) to their correct grid sizes
+				const iconSheetGridOverrides = [
+					{
+						pattern: /spotternetwork\.org\/iconsheets\/SN_Reports_096\.png/i,
+						cols: 3,
+						rows: 4
+					},
+					// Add more overrides here as needed:
+					// { pattern: /someother\.org\/iconsheet\.png/i, cols: X, rows: Y }
+				];
+				for (const override of iconSheetGridOverrides) {
+					if (override.pattern.test(filename)) {
+						numCols = override.cols;
+						numRows = override.rows;
+						break;
+					}
+				}
 				// Resolve relative URL against placefile base
 				let imgUrl = filename;
-				if (baseUrl && !/^https?:\/\//i.test(filename)) {
+				const isAbsolute = /^(https?:)?\/\//i.test(filename) || /^data:/i.test(filename) || /^blob:/i.test(filename);
+				if (baseUrl && !isAbsolute) {
 					const base = baseUrl.replace(/\/[^/]*$/, "/");
 					imgUrl = base + filename;
+				} else if (/^\/\//.test(filename)) {
+					imgUrl = "https:" + filename;
 				}
 				// Route through proxy
 				const proxiedUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(imgUrl);
@@ -1364,33 +1432,10 @@ function makeBlackTransparent(imageUrl) {
 	if (transparentSpriteCache[imageUrl]) {
 		return Promise.resolve(transparentSpriteCache[imageUrl]);
 	}
-	return new Promise(function (resolve) {
-		const img = new Image();
-		img.crossOrigin = 'anonymous';
-		img.onload = function () {
-			var canvas = document.createElement('canvas');
-			canvas.width = img.width;
-			canvas.height = img.height;
-			var ctx = canvas.getContext('2d');
-			ctx.drawImage(img, 0, 0);
-			var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-			var data = imageData.data;
-			for (var i = 0; i < data.length; i += 4) {
-				if (data[i] < 30 && data[i + 1] < 30 && data[i + 2] < 30) {
-					data[i + 3] = 0;
-				}
-			}
-			ctx.putImageData(imageData, 0, 0);
-			var result = canvas.toDataURL('image/png');
-			transparentSpriteCache[imageUrl] = result;
-			resolve(result);
-		};
-		img.onerror = function () {
-			// Fall back to original URL on error
-			resolve(imageUrl);
-		};
-		img.src = imageUrl;
-	});
+	// Spotter Network sprite sheets contain black glyphs and labels that would be
+	// damaged by black-to-transparent conversion, so keep the original image.
+	transparentSpriteCache[imageUrl] = imageUrl;
+	return Promise.resolve(imageUrl);
 }
 
 async function drawPlacefile(url, text) {
@@ -1485,6 +1530,29 @@ async function drawPlacefile(url, text) {
 					interactive: true,
 					icon: L.divIcon({
 						className: "placefile-text-label",
+						html: html,
+						iconSize: [0, 0],
+						iconAnchor: [0, 0],
+					}),
+				});
+			}
+			if (markerType === "icon") {
+				const iconEls = feature.properties.iconElements || [];
+				let html = '<div style="position: relative;">';
+				for (const el of iconEls) {
+					const rotStyle = el.rotation ? ' transform: rotate(' + el.rotation + 'deg);' : '';
+					html += '<div style="position: absolute;' +
+						' left:' + (el.xOff - el.width / 2) + 'px; top:' + (-(el.yOff) - el.height / 2) + 'px;' +
+						' width:' + el.width + 'px; height:' + el.height + 'px;' +
+						' background: url(\'' + el.url + '\') no-repeat -' + el.spriteX + 'px -' + el.spriteY + 'px;' +
+						rotStyle + '"></div>';
+				}
+				html += '</div>';
+				return L.marker(latlng, {
+					pane: markerPane,
+					interactive: true,
+					icon: L.divIcon({
+						className: "placefile-icon-label",
 						html: html,
 						iconSize: [0, 0],
 						iconAnchor: [0, 0],

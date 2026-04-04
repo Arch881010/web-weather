@@ -7,6 +7,7 @@ let radarLastKey = null;
 let radarLastSite = null;
 let radarLastProduct = null;
 let radarLastCmap = null;
+let radarLastGeometry = null;
 let radarLastTilt = null;
 let radarNeedsInitialForce = true;
 let radarActiveMode = null;
@@ -512,6 +513,7 @@ const AVAILABLE_PRODUCTS = [
 ];
 
 const LEVEL2_PRODUCTS = new Set(["reflectivity", "velocity"]);
+const TDWR_BLOCKED_PRODUCTS = new Set(["srv", "cc", "classification"]);
 
 function isTdwrSite(site) {
     const code = (site || "").trim().toUpperCase();
@@ -532,6 +534,10 @@ function getAvailableProductsForSite(site, levelOverride = getRadarLevel()) {
         products = products.filter((p) => LEVEL2_PRODUCTS.has(p.value));
     }
 
+    if (isTdwrSite(site)) {
+        products = products.filter((p) => !TDWR_BLOCKED_PRODUCTS.has(p.value));
+    }
+
     const disabled = getDisabledRadarProducts();
     products = products.filter((p) => !disabled.has(p.value));
 
@@ -546,9 +552,9 @@ function getAvailableProductsForSite(site, levelOverride = getRadarLevel()) {
 function normalizeProductForSite(product, site, levelOverride = getRadarLevel()) {
     const normalized = normalizeRadarProduct(product);
 
-    // TDWR sites do not provide SRV or Classification in this client path.
+    // TDWR sites do not provide SRV/CC/Classification in this client path.
     // Force unsupported selections to reflectivity before any fetch.
-    if (isTdwrSite(site) && (normalized === "srv" || normalized === "classification")) {
+    if (isTdwrSite(site) && TDWR_BLOCKED_PRODUCTS.has(normalized)) {
         return "reflectivity";
     }
 
@@ -853,6 +859,20 @@ function setRadarLayerFromSweep(sweepData, opacity) {
     return true;
 }
 
+function getSweepGeometryKey(sweepData) {
+    if (!sweepData) return "";
+    const lat = Number(sweepData.latitude || 0).toFixed(5);
+    const lon = Number(sweepData.longitude || 0).toFixed(5);
+    const firstGate = Number(sweepData.firstGateRange || 0).toFixed(1);
+    const gateWidth = Number(sweepData.gateWidth || 0).toFixed(1);
+    const numGates = Number(sweepData.numGates || 0);
+    const numRadials = Number(sweepData.numRadials || 0);
+    const az0 = Array.isArray(sweepData.azimuths) && sweepData.azimuths.length
+        ? Number(sweepData.azimuths[0]).toFixed(2)
+        : "0.00";
+    return `${lat}:${lon}:${firstGate}:${gateWidth}:${numGates}:${numRadials}:${az0}`;
+}
+
 function setRadarSitePreference(site, persist = false) {
     const normalizedSite = (site || "").trim().toUpperCase();
     if (!normalizedSite) return;
@@ -917,6 +937,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         const radarLevel     = config.radarApi?.level || 2;
         const resolvedProductKey = `${resolvedProduct}:L${radarLevel}`;
         const currentCmap    = getColormapForProduct(resolvedProduct);
+        const geometryKey = getSweepGeometryKey(sweepData);
 
         // Skip re-render if nothing has changed
         if (
@@ -926,7 +947,8 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
             radarLastKey === key &&
             radarLastSite === resolvedSite &&
             radarLastProduct === resolvedProductKey &&
-            radarLastCmap === currentCmap
+            radarLastCmap === currentCmap &&
+            radarLastGeometry === geometryKey
         ) {
             radarLayer.setOpacity(config.opacity.radar);
             updateSelectedRadarLabel(resolvedSite);
@@ -946,6 +968,7 @@ async function loadRadarForSite(radarSiteCode, coordinates = null, force = false
         radarLastSite    = resolvedSite;
         radarLastProduct = resolvedProductKey;
         radarLastCmap    = currentCmap;
+        radarLastGeometry = geometryKey;
         radarSiteFailureCounts[resolvedSite] = 0;
 
         updateSelectedRadarLabel(resolvedSite);
@@ -992,6 +1015,7 @@ function removeRadar() {
     radarLastSite     = null;
     radarLastProduct  = null;
     radarLastCmap     = null;
+    radarLastGeometry = null;
     radarNeedsInitialForce = true;
     radarActiveMode   = null;
     if (radarFetchController) {

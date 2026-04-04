@@ -103,6 +103,60 @@ async function fetchText(url) {
   return res.text();
 }
 
+let _radarStationCoordsPromise = null;
+
+const TDWR_CENTER_OVERRIDES = {
+};
+
+async function getRadarStationCoords(site) {
+  const code = normalizeSite(site);
+  if (TDWR_CENTER_OVERRIDES[code]) {
+    return TDWR_CENTER_OVERRIDES[code];
+  }
+  if (!_radarStationCoordsPromise) {
+    _radarStationCoordsPromise = (async () => {
+      const response = await fetch('./json/radars.json', { headers: { 'User-Agent': 'nexrad-browser/1.0' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status} fetching ./json/radars.json`);
+      const json = await response.json();
+      const coordsBySite = new Map();
+      for (const feature of json.features || []) {
+        const name = (feature.name || feature.properties?.name || '').trim().toUpperCase();
+        const coords = feature.geometry?.coordinates;
+        if (!name || !Array.isArray(coords) || coords.length < 2) continue;
+        coordsBySite.set(name, {
+          lon: Number(coords[0]),
+          lat: Number(coords[1]),
+        });
+      }
+      return coordsBySite;
+    })();
+  }
+
+  try {
+    const coordsBySite = await _radarStationCoordsPromise;
+    return coordsBySite.get(code) || null;
+  } catch (error) {
+    console.warn(`[nexrad] Failed to load radar station coordinates: ${error.message}`);
+    return null;
+  }
+}
+
+function chooseRadarCenterCoords(parserLat, parserLon, stationCoords) {
+  const parsedLat = Number(parserLat);
+  const parsedLon = Number(parserLon);
+  if (Number.isFinite(parsedLat) && Number.isFinite(parsedLon) && Math.abs(parsedLat) > 0.001 && Math.abs(parsedLon) > 0.001) {
+    return { lat: parsedLat, lon: parsedLon };
+  }
+
+  const stationLat = Number(stationCoords?.lat);
+  const stationLon = Number(stationCoords?.lon);
+  if (Number.isFinite(stationLat) && Number.isFinite(stationLon) && Math.abs(stationLat) > 0.001 && Math.abs(stationLon) > 0.001) {
+    return { lat: stationLat, lon: stationLon };
+  }
+
+  return { lat: 0, lon: 0 };
+}
+
 async function listS3Keys(bucketBase, prefix) {
   const listUrl = `${bucketBase}/?list-type=2&prefix=${encodeURIComponent(prefix)}&max-keys=1000`;
   const xml = await fetchText(listUrl);
@@ -718,9 +772,10 @@ class Level2Parser {
 //
 
 class Level3Parser {
-  constructor(raw, product) {
+  constructor(raw, product, site = null) {
     this.raw      = raw;
     this.product  = product;
+    this.site     = site;
     this.view     = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
     this.siteLat  = null;
     this.siteLon  = null;
@@ -955,7 +1010,7 @@ class Level3Parser {
     const divider = dv.getInt16(0, false);
     console.log(`[L3] decompressed divider=${divider}, bytes[0..7]: ${Array.from(decompressed.subarray(0,8)).map(b=>'0x'+b.toString(16).padStart(2,'0')).join(' ')}`);
 
-    const tempParser = new Level3Parser(decompressed, this.product);
+    const tempParser = new Level3Parser(decompressed, this.product, this.site);
 
     if (divider === -1) {
       return tempParser._parseSymbologyBlock(0);
@@ -1156,11 +1211,19 @@ class Level3Parser {
 
     if (numRadials === 0 || numBins === 0) return null;
 
-    // Packet 16 scale_factor is a DISPLAY scale (pixels per km), NOT gate width.
-    // Per ICD 2620001Y all digital radial products (94, 153, NZB, N0B) use 250m gates.
-    // Derive from numBins: standard ~920 bins = 230km range, super-res ~1840 = 460km.
-    // Either way: gate width = 250m. firstBin is a range-bin index at that spacing.
-    const gateWidthM  = 250;
+    // Packet 16 scale_factor varies by product/source.
+    // Infer gate width when plausible; this is critical for TDWR where 150m gates are common.
+    let gateWidthM = 250;
+    if (Number.isFinite(scaleFactor) && scaleFactor > 0 && scaleFactor < 100) {
+      const inferred = Math.round((1.0 / scaleFactor) * 1000);
+      if (inferred >= 100 && inferred <= 1000) gateWidthM = inferred;
+    }
+    if (isTdwrSite(this.site)) {
+      // TDWR products are typically 150m near-range resolution.
+      if (!Number.isFinite(gateWidthM) || gateWidthM < 100 || gateWidthM > 300) {
+        gateWidthM = 150;
+      }
+    }
     const firstGateM  = Math.max(0, firstBin) * gateWidthM;
 
     const azimuths = new Float32Array(numRadials);
@@ -1705,16 +1768,31 @@ function normalizeTdwrRange(sweep, site, product) {
   if (!isTdwrSite(site) || !sweep || !sweep.numGates) return sweep;
 
   let targetRange = null;
-  if (product === 'reflectivity') targetRange = 460000;
-  else if (product === 'velocity') targetRange = 300000;
+  if (product === 'reflectivity') targetRange = 135000;
+  else if (product === 'velocity' || product === 'srv' || product === 'nrot') targetRange = 90000;
 
   if (!targetRange) return sweep;
 
-  const gateWidth = targetRange / sweep.numGates;
+  const gateWidth = Math.max(1, sweep.gateWidth || 0);
+  const firstGate = Math.max(0, sweep.firstGateRange || 0);
+  const maxGates = Math.max(1, Math.floor((targetRange - firstGate) / gateWidth));
+  const effectiveGates = Math.min(sweep.numGates, maxGates);
+
+  if (effectiveGates === sweep.numGates) return sweep;
+
+  const trimmed = new Float32Array(sweep.numRadials * effectiveGates);
+  for (let r = 0; r < sweep.numRadials; r++) {
+    trimmed.set(
+      sweep.data.subarray(r * sweep.numGates, r * sweep.numGates + effectiveGates),
+      r * effectiveGates
+    );
+  }
+
   return {
     ...sweep,
-    firstGateRange: 0,
-    gateWidth,
+    data: trimmed,
+    numGates: effectiveGates,
+    maxRange: Math.round((firstGate + effectiveGates * gateWidth) * 10) / 10,
   };
 }
 
@@ -1753,12 +1831,12 @@ class NexradClient {
         const canFallbackToL2 = product === 'reflectivity' || product === 'velocity' || product === 'cc';
         if (canFallbackToL2 && product !== 'classification') {
           console.warn(`[nexrad] Level III ${product} failed for ${site}, falling back to Level II (${err.message})`);
-          return this._getSweepLevel2(site, product, options.force);
+          return this._getSweepLevel2(site, product, options.force, options);
         }
         throw err;
       }
     }
-    return this._getSweepLevel2(site, product, options.force);
+    return this._getSweepLevel2(site, product, options.force, options);
   }
 
   _deriveNrotFromVelocitySweep(velSweep) {
@@ -1814,7 +1892,7 @@ class NexradClient {
     return this._deriveNrotFromVelocitySweep(velSweep);
   }
 
-  async _getSweepLevel2(site, product, force = false) {
+  async _getSweepLevel2(site, product, force = false, options = {}) {
     const cached = this._cache.get(site);
     const now    = Date.now();
 
@@ -1844,31 +1922,40 @@ class NexradClient {
       );
     }
 
-    const sweep = parser.getSweep(field, options.requestedElevNum);
+    const availableElevations = parser.getAvailableElevations(field) || [];
+    const requestedElevNum = options.requestedElevNum !== null && options.requestedElevNum !== undefined
+      ? options.requestedElevNum
+      : (isTdwrSite(site) && availableElevations.length > 0 ? availableElevations[0].elevNum : null);
+
+    const sweep = parser.getSweep(field, requestedElevNum);
     if (!sweep) throw new Error(`No sweep data for field "${field}" in ${site}`);
 
-    const lat = parser.siteLat ?? 0;
-    const lon = parser.siteLon ?? 0;
+    const sweepToUse = normalizeTdwrRange(sweep, site, product);
+
+    const stationCoords = await getRadarStationCoords(site);
+    const center = chooseRadarCenterCoords(parser.siteLat, parser.siteLon, stationCoords);
+    const lat = center.lat;
+    const lon = center.lon;
     const cfg = PRODUCT_CONFIG[product] || PRODUCT_CONFIG.reflectivity;
 
-    let sweepData = sweep.data;
+    let sweepData = sweepToUse.data;
 
-    let effectiveGates = sweep.numGates;
+    let effectiveGates = sweepToUse.numGates;
     {
       let lastValid = -1;
-      for (let g = sweep.numGates - 1; g >= 0; g--) {
+      for (let g = sweepToUse.numGates - 1; g >= 0; g--) {
         let allMissing = true;
-        for (let r = 0; r < sweep.numRadials; r++) {
-          if (!isNaN(sweepData[r * sweep.numGates + g])) { allMissing = false; break; }
+        for (let r = 0; r < sweepToUse.numRadials; r++) {
+          if (!isNaN(sweepData[r * sweepToUse.numGates + g])) { allMissing = false; break; }
         }
         if (!allMissing) { lastValid = g; break; }
       }
-      if (lastValid >= 0 && lastValid < sweep.numGates - 1) {
+      if (lastValid >= 0 && lastValid < sweepToUse.numGates - 1) {
         effectiveGates = lastValid + 1;
-        const trimmed = new Float32Array(sweep.numRadials * effectiveGates);
-        for (let r = 0; r < sweep.numRadials; r++) {
+        const trimmed = new Float32Array(sweepToUse.numRadials * effectiveGates);
+        for (let r = 0; r < sweepToUse.numRadials; r++) {
           trimmed.set(
-            sweepData.subarray(r * sweep.numGates, r * sweep.numGates + effectiveGates),
+            sweepData.subarray(r * sweepToUse.numGates, r * sweepToUse.numGates + effectiveGates),
             r * effectiveGates
           );
         }
@@ -1878,14 +1965,11 @@ class NexradClient {
 
     let quantised = quantise(sweepData, cfg.vmin, cfg.vmax, cfg.applyMin, cfg.minVal);
 
-    if (['reflectivity', 'velocity', 'srv'].includes(product)) {
+    if (!isTdwrSite(site) && ['reflectivity', 'velocity', 'srv'].includes(product)) {
       quantised = speckleFilter(quantised, sweep.numRadials, effectiveGates);
     }
 
-    const maxRange = (sweep.firstGateRange + effectiveGates * sweep.gateWidth);
-
-    // Get available elevations for tilt selector
-    const availableElevations = parser.getAvailableElevations(field) || [];
+    const maxRange = (sweepToUse.firstGateRange + effectiveGates * sweepToUse.gateWidth);
 
     return {
       site,
@@ -1893,11 +1977,11 @@ class NexradClient {
       product,
       latitude:       Math.round(lat * 1e6) / 1e6,
       longitude:      Math.round(lon * 1e6) / 1e6,
-      azimuths:       sweep.azimuths.map(a => Math.round(a * 100) / 100),
-      firstGateRange: Math.round(sweep.firstGateRange * 10) / 10,
-      gateWidth:      Math.round(sweep.gateWidth * 10) / 10,
+      azimuths:       sweepToUse.azimuths.map(a => Math.round(a * 100) / 100),
+      firstGateRange: Math.round(sweepToUse.firstGateRange * 10) / 10,
+      gateWidth:      Math.round(sweepToUse.gateWidth * 10) / 10,
       numGates:       effectiveGates,
-      numRadials:     sweep.numRadials,
+      numRadials:     sweepToUse.numRadials,
       maxRange:       Math.round(maxRange * 10) / 10,
       vmin:           Math.round(cfg.vmin * 100) / 100,
       vmax:           Math.round(cfg.vmax * 100) / 100,
@@ -2017,11 +2101,14 @@ class NexradClient {
       this._cache.set(cacheKey, { raw: rawData, key, time: now });
     }
 
-    const parser = new Level3Parser(rawData, product);
+    const parser = new Level3Parser(rawData, product, site);
     let sweep  = parser.parse();
     sweep = normalizeTdwrRange(sweep, site, product);
 
     const cfg = PRODUCT_CONFIG[product] || PRODUCT_CONFIG.reflectivity;
+
+    // TDWR is a terminal-radar product; crop to its usable near-range envelope instead of
+    // stretching the gate spacing out to long-range WSR-88D distances.
 
     // classification (N0H): raw category codes 10-160 — pass through unchanged.
     // Other rawLevels: legacy 0xAF1F (0-15) or digital pkt16 (use thr1/thr2).
@@ -2037,14 +2124,19 @@ class NexradClient {
 
     let quantised = quantise(sweepData, cfg.vmin, cfg.vmax, cfg.applyMin, cfg.minVal);
 
+    const stationCoords = await getRadarStationCoords(site);
+    const center = chooseRadarCenterCoords(parser.siteLat, parser.siteLon, stationCoords);
+    const lat = center.lat;
+    const lon = center.lon;
+
     const maxRange = sweep.firstGateRange + sweep.numGates * sweep.gateWidth;
 
     return {
       site,
       key:            key || '',
       product,
-      latitude:       Math.round((parser.siteLat || 0) * 1e6) / 1e6,
-      longitude:      Math.round((parser.siteLon || 0) * 1e6) / 1e6,
+      latitude:       Math.round(lat * 1e6) / 1e6,
+      longitude:      Math.round(lon * 1e6) / 1e6,
       azimuths:       sweep.azimuths.map(a => Math.round(a * 100) / 100),
       firstGateRange: Math.round(sweep.firstGateRange * 10) / 10,
       gateWidth:      Math.round(sweep.gateWidth * 10) / 10,
