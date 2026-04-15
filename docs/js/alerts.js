@@ -9,10 +9,10 @@ const order = [
 	"Warning",
 ];
 
-async function mergeWatchPolygons(data) {
-	if (!config.show.watches) return data;
+async function mergeWatchPolygons(data, watchSource = "none") {
+	if (!config.show.watches || watchSource !== "legacy-spc") return data;
 
-	const watches = await getWatches();
+	const watches = await getWatches({ source: watchSource });
 	if (watches.length > 0) {
 		data.features.push(...watches);
 	}
@@ -52,7 +52,7 @@ function sortAlertPolygons(data) {
 	return data;
 }
 
-async function processAlertData(data) {
+async function processAlertData(data, watchSource = "none") {
 	data.features = data.features.filter((feature) => feature.geometry !== null);
 
 	if ((localStorage.getItem("hideFloods") ?? true) == true) {
@@ -62,7 +62,7 @@ async function processAlertData(data) {
 		});
 	}
 
-	await mergeWatchPolygons(data);
+	await mergeWatchPolygons(data, watchSource);
 	sortAlertPolygons(data);
 	drawPolygons(data);
 	current_features = data;
@@ -100,7 +100,7 @@ function updateWeatherAlerts() {
 		return;
 	}
 
-	const alertUrl = `${config.api}?filter=*watch`;
+	const alertUrl = `${config.api}?status=actual&urgency=Immediate,Expected,Future,Past,Unknown`;
 
 	fetch(alertUrl, {
 		headers: { "User-Agent": "WIP Web Weather App (admin@arch1010.dev)" },
@@ -124,7 +124,7 @@ function updateWeatherAlerts() {
 				}
 			)
 				.then((response) => response.json())
-				.then((data) => processAlertData(data))
+				.then((data) => processAlertData(data, "legacy-spc"))
 				.catch((fallbackError) => {
 					console.error("Both APIs failed:", fallbackError);
 				});

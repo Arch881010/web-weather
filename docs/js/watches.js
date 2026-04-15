@@ -1,58 +1,19 @@
 /** @format */
 
-const WATCHES_URL = "https://data.arch1010.dev/watches";
+const LEGACY_SPC_WATCH_INDEX_URL = "https://www.spc.noaa.gov/products/watch/";
 
-function toPolygonGeometry(feature) {
-	const properties = feature?.properties || {};
-	const ringSource = Array.isArray(properties.coordinates)
-		? properties.coordinates
-		: feature?.geometry?.type === "LineString" && Array.isArray(feature?.geometry?.coordinates)
-			? feature.geometry.coordinates
-			: null;
-
-	if (!ringSource) {
-		return feature?.geometry;
-	}
-
-	const ring = ringSource.map((coordinate) => [coordinate[0], coordinate[1]]);
-	if (ring.length > 0) {
-		const first = ring[0];
-		const last = ring[ring.length - 1];
-		if (first[0] !== last[0] || first[1] !== last[1]) {
-			ring.push(first.slice());
-		}
-	}
+function buildLegacyWatchSummary({ watchEvent, watchNumber, description }) {
+	const sent = new Date().toISOString();
+	const expires = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
 	return {
-		type: "Polygon",
-		coordinates: [ring],
-	};
-}
-
-function buildWatchSummary(feature) {
-	const properties = feature.properties || {};
-	const watchEvent = properties.watchEvent || "Watch";
-	const watchNumber = properties.watchNumber ? ` #${properties.watchNumber}` : "";
-	const sent = properties.watchSent || properties.sent || new Date().toISOString();
-	const expires = properties.watchExpires || properties.expires || sent;
-	const countyCount = properties.countyCount ? `${properties.countyCount} counties affected` : "";
-	const description = typeof properties.description === "string"
-		? properties.description.trim()
-		: "";
-	const fallbackDescription = [
-		`${watchEvent}${watchNumber}`,
-		countyCount,
-		`Expires ${new Date(expires).toUTCString()}`,
-	].filter(Boolean).join("\n");
-
-	return {
-		event: `${watchEvent}${watchNumber}`,
+		event: `${watchEvent}${watchNumber ? ` #${watchNumber}` : ""}`,
 		senderName: "Storm Prediction Center",
 		sent,
 		expires,
 		headline: "",
 		isDefault: false,
-		description: description || fallbackDescription,
+		description,
 		parameters: {
 			hail: {
 				maxHail: "N/A",
@@ -69,37 +30,148 @@ function buildWatchSummary(feature) {
 			storm: {
 				severity: "",
 			},
-			originalFeature: feature,
 		},
 		watchEvent,
-		watchId: properties.watchId ?? null,
-		watchNumber: properties.watchNumber || "",
+		watchNumber: watchNumber || "",
 		watchSent: sent,
 		watchExpires: expires,
-		watchColor: properties.watchColor || "",
-		countyCount: properties.countyCount || 0,
+		watchColor: /tornado/i.test(watchEvent) ? "#840404" : "#f5be1d",
+		countyCount: 0,
 	};
 }
 
-async function getWatches() {
+function parseLegacyLatLonPolygon(htmlText) {
+	const latLonMatch = htmlText.match(/LAT\.\.\.LON\s+([0-9\s]+)/i);
+	if (!latLonMatch) {
+		return null;
+	}
+
+	const rawPoints = latLonMatch[1]
+		.trim()
+		.split(/\s+/)
+		.filter((token) => /^\d{8}$/.test(token));
+
+	if (rawPoints.length < 3) {
+		return null;
+	}
+
+	const ring = rawPoints.map((token) => {
+		const lat = Number.parseInt(token.slice(0, 4), 10) / 100;
+		const lon = -Number.parseInt(token.slice(4), 10) / 100;
+		return [lon, lat];
+	});
+
+	if (ring.length > 0) {
+		const first = ring[0];
+		const last = ring[ring.length - 1];
+		if (first[0] !== last[0] || first[1] !== last[1]) {
+			ring.push(first.slice());
+		}
+	}
+
+	return {
+		type: "Polygon",
+		coordinates: [ring],
+	};
+}
+
+function decodeHtml(htmlText) {
+	return htmlText
+		.replace(/&nbsp;/g, " ")
+		.replace(/&amp;/g, "&")
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&#39;/g, "'")
+		.replace(/&quot;/g, '"');
+}
+
+function stripTags(htmlText) {
+	return htmlText.replace(/<[^>]*>/g, "");
+}
+
+function parseLegacyWatchMetadata(htmlText) {
+	const titleMatch = htmlText.match(/<title>\s*Storm Prediction Center\s+([^<]+?)\s*<\/title>/i);
+	const fallbackTitle = titleMatch?.[1]?.trim() || "Severe Thunderstorm Watch";
+	const watchEventMatch = fallbackTitle.match(/(Tornado Watch|Severe Thunderstorm Watch)/i);
+	const watchNumberMatch = fallbackTitle.match(/(\d+)/);
+	const watchEvent = watchEventMatch ? watchEventMatch[1] : "Watch";
+	const watchNumber = watchNumberMatch ? watchNumberMatch[1] : "";
+
+	const preMatch = htmlText.match(/<pre>([\s\S]*?)<\/pre>/i);
+	const description = preMatch
+		? decodeHtml(stripTags(preMatch[1])).trim()
+		: fallbackTitle;
+
+	return {
+		watchEvent,
+		watchNumber,
+		description,
+	};
+}
+
+async function getLegacySpcWatchPageUrls() {
+	const response = await fetch(LEGACY_SPC_WATCH_INDEX_URL);
+	if (!response.ok) {
+		throw new Error(`Legacy SPC index HTTP error! status: ${response.status}`);
+	}
+
+	const htmlText = await response.text();
+	const matches = [...htmlText.matchAll(/ww(\d{4})\.html/gi)];
+	const watchNumbers = [...new Set(matches.map((match) => match[1]))];
+
+	return watchNumbers.map(
+		(number) => `${LEGACY_SPC_WATCH_INDEX_URL}ww${number}.html`
+	);
+}
+
+async function getLegacySpcWatches() {
 	try {
-		const response = await fetch(WATCHES_URL);
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
+		const watchPageUrls = await getLegacySpcWatchPageUrls();
+		if (watchPageUrls.length === 0) {
+			return [];
 		}
 
-		const data = await response.json();
-		const features = Array.isArray(data) ? data : (data.features || []);
-		const watchFeatures = features.filter((feature) => feature?.properties?.featureType === "county-watch-outline");
+		const results = await Promise.all(
+			watchPageUrls.map(async (pageUrl) => {
+				try {
+					const response = await fetch(pageUrl);
+					if (!response.ok) {
+						return null;
+					}
 
-		return watchFeatures.map((feature) => ({
-			id: feature.id,
-			type: "Feature",
-			geometry: toPolygonGeometry(feature),
-			properties: buildWatchSummary(feature),
-		}));
+					const htmlText = await response.text();
+					const geometry = parseLegacyLatLonPolygon(htmlText);
+					if (!geometry) {
+						return null;
+					}
+
+					const metadata = parseLegacyWatchMetadata(htmlText);
+					return {
+						id: `spc-watch-${metadata.watchNumber || pageUrl}`,
+						type: "Feature",
+						geometry,
+						properties: buildLegacyWatchSummary(metadata),
+					};
+				} catch (error) {
+					console.warn("Failed to load legacy SPC watch page:", pageUrl, error);
+					return null;
+				}
+			})
+		);
+
+		return results.filter(Boolean);
 	} catch (error) {
-		console.error("Error fetching watch data:", error);
+		console.error("Error fetching legacy SPC watch data:", error);
 		return [];
 	}
+}
+
+async function getWatches(options = {}) {
+	const source = options?.source || "none";
+
+	if (source === "legacy-spc") {
+		return getLegacySpcWatches();
+	}
+
+	return [];
 }
