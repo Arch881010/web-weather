@@ -507,7 +507,6 @@ function drawPolygons(data) {
 			};
 		},
 		id: "weather-alerts-border",
-		pane: 'alertsPane',
 	}).addTo(map);
 
 	// Add the GeoJSON layer to the map with color coding
@@ -522,7 +521,7 @@ function drawPolygons(data) {
 		},
 		onEachFeature: function (feature, layer) {
 			if (feature.properties) {
-				layer.bindPopup(getPopupText(feature), { pane: 'alertsPopupPane' });
+				layer.bindPopup(getPopupText(feature));
 			}
 
 			layer.on("popupopen", function () {
@@ -531,7 +530,6 @@ function drawPolygons(data) {
 			});
 		},
 		id: "weather-alerts",
-		pane: 'alertsPane',
 	})
 		.addTo(map)
 		.bringToFront();
@@ -548,7 +546,6 @@ function drawPolygons(data) {
 		},
 		id: "alert-extras",
 		interactive: false,
-		pane: 'alertsPane',
 	})
 		.addTo(map)
 		.bringToFront();
@@ -920,7 +917,7 @@ function playSound(markerName, textToSpeak) {
 
 window.placefileLayers = window.placefileLayers || {};
 
-function parseGRLevelXPlacefile(text, baseUrl) {
+function parseGRLevelXPlacefile(text) {
 	const features = [];
 	const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 
@@ -928,14 +925,12 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 	let currentFont = { size: 12, name: "Arial" };
 	let refreshSeconds = null;
 	let title = "";
-	const iconFiles = {};     // fileIndex → { width, height, columns, rows, url }
 
 	// State for multi-line commands
 	let mode = null;          // "line", "polygon", "triangles", "object"
 	let coords = [];
 	let cmdMeta = {};         // label, width, etc. from the command header
-	let objectAnchor = null;  // { lat, lon } for current Object block
-	let objectElements = [];  // collected text/icon elements inside Object: ... End:
+	let objectIcons = [];     // collected icons inside Object: ... End:
 
 	function rgbaToHex(r, g, b, a) {
 		const hex = "#" + [r, g, b].map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0")).join("");
@@ -1076,31 +1071,8 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 					},
 				});
 			}
-		} else if (mode === "object" && objectAnchor) {
-			// Build a composite feature from collected elements
-			const textEls = objectElements.filter(e => e.type === "text");
-			const iconEls = objectElements.filter(e => e.type === "icon");
-			const tooltipEl = objectElements.find(e => e.type === "icon-tooltip");
-			if (textEls.length > 0 || iconEls.length > 0 || tooltipEl) {
-				const tooltip = tooltipEl ? tooltipEl.tooltip : "";
-				const unescapedTooltip = tooltip.replace(/\\n/g, "\n");
-				const tooltipLines = unescapedTooltip ? unescapedTooltip.split("\n") : [];
-				features.push({
-					type: "Feature",
-					geometry: { type: "Point", coordinates: [objectAnchor.lon, objectAnchor.lat] },
-					properties: {
-						"marker-type": "object",
-						textElements: textEls,
-						iconElements: iconEls,
-						title: tooltipLines.length > 0 ? tooltipLines[0] : "",
-						description: tooltipLines.length > 1 ? tooltipLines.slice(1).join("\n") : "",
-						name: tooltipLines.length > 0 ? tooltipLines[0] : (textEls.length > 0 ? textEls[0].label : ""),
-						popupButtonText: tooltip ? "Show Full Text" : undefined,
-					},
-				});
-			}
-			objectAnchor = null;
-			objectElements = [];
+		} else if (mode === "object") {
+			// Object icons are already pushed individually
 		}
 
 		mode = null;
@@ -1138,36 +1110,6 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 		}
 
 		if (mode === "object") {
-			// Color changes inside Object blocks
-			if (/^Color:/i.test(trimmed)) {
-				const parts = trimmed.replace(/^Color:\s*/i, "").trim().split(/[\s,]+/).map(Number);
-				if (parts.length >= 3) {
-					currentColor = [parts[0], parts[1], parts[2], parts.length >= 4 ? parts[3] : 255];
-				}
-				continue;
-			}
-			// Threshold inside Object blocks
-			if (/^Threshold:/i.test(trimmed)) continue;
-
-			// Text inside Object: pixel-offset text labels
-			// Format: Text: xOffset, yOffset, fontIndex, "quoted" or Text: xOffset, yOffset, fontIndex, bareValue
-			const objTextMatch = trimmed.match(/^Text:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*\d+\s*,\s*(?:"([^"]*)"|(.+))$/i);
-			if (objTextMatch) {
-				const xOff = parseFloat(objTextMatch[1]);
-				const yOff = parseFloat(objTextMatch[2]);
-				const label = (objTextMatch[3] !== undefined ? objTextMatch[3] : (objTextMatch[4] || "").trim());
-				objectElements.push({
-					type: "text",
-					xOff, yOff,
-					label,
-					color: rgbaToHex(...currentColor),
-					fontSize: currentFont.size,
-				});
-				continue;
-			}
-
-			// Icon inside Object blocks
-			// Format: Icon: xOff, yOff, rotation, fileIndex, iconIndex[, "tooltip"]
 			const iconMatch = trimmed.match(/^Icon:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
 			if (iconMatch) {
 				const xOff = parseFloat(iconMatch[1]);
@@ -1242,10 +1184,9 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 		}
 
 		if (/^Font:\s*/i.test(trimmed)) {
-			// Support both quoted and unquoted font names: Font: 1, 12, 1, "Arial" or Font: 1, 12, 1, Arial
-			const fontMatch = trimmed.match(/^Font:\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*(?:"([^"]*)"|([\w\s]+))$/i);
+			const fontMatch = trimmed.match(/^Font:\s*\d+\s*,\s*(\d+)\s*,\s*\d+\s*,\s*"([^"]*)"/i);
 			if (fontMatch) {
-				currentFont = { size: parseInt(fontMatch[1], 10), name: (fontMatch[2] || fontMatch[3] || "Arial").trim() };
+				currentFont = { size: parseInt(fontMatch[1], 10), name: fontMatch[2] };
 			}
 			continue;
 		}
@@ -1326,14 +1267,6 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 			flushMultiLine();
 			mode = "object";
 			cmdMeta = {};
-			objectElements = [];
-			// Parse anchor coordinates: Object: lat,lon
-			const objCoordMatch = trimmed.match(/^Object:\s*([-\d.]+)\s*,\s*([-\d.]+)/i);
-			if (objCoordMatch) {
-				objectAnchor = { lat: parseFloat(objCoordMatch[1]), lon: parseFloat(objCoordMatch[2]) };
-			} else {
-				objectAnchor = null;
-			}
 			continue;
 		}
 
@@ -1356,11 +1289,11 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 			continue;
 		}
 
-		const textMatch = trimmed.match(/^Text:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*\d+\s*,\s*(?:"([^"]*)"(?:\s*,\s*"([^"]*)")?|(.+))$/i);
+		const textMatch = trimmed.match(/^Text:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*\d+\s*,\s*"([^"]*)"(?:\s*,\s*"([^"]*)")?/i);
 		if (textMatch) {
 			const lat = parseFloat(textMatch[1]);
 			const lon = parseFloat(textMatch[2]);
-			const label = textMatch[3] !== undefined ? textMatch[3] : (textMatch[5] || "").trim();
+			const label = textMatch[3];
 			const rawDesc = textMatch[4];
 			const unescapedDesc = rawDesc ? rawDesc.replace(/\\n/g, "\n") : "";
 			const descLines = unescapedDesc ? unescapedDesc.split("\n") : [];
@@ -1421,7 +1354,6 @@ function parseGRLevelXPlacefile(text, baseUrl) {
 		geojson: { type: "FeatureCollection", features },
 		refreshSeconds,
 		title,
-		iconFiles,
 	};
 }
 
@@ -1684,23 +1616,6 @@ async function drawPlacefile(url, text) {
 
 }
 
-function getRadarSiteCoords() {
-	const site = (config.radarApi?.site || "").trim().toUpperCase();
-	if (!site || !window.radarSitesData) return null;
-	const feature = window.radarSitesData.features.find(f => f.name === site);
-	if (!feature) return null;
-	return { lat: feature.geometry.coordinates[1], lon: feature.geometry.coordinates[0] };
-}
-
-function buildProxyUrl(url) {
-	let proxyUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(url);
-	const coords = getRadarSiteCoords();
-	if (coords) {
-		proxyUrl += "&latitude=" + coords.lat + "&longitude=" + coords.lon;
-	}
-	return proxyUrl;
-}
-
 function fetchAndDrawPlacefile(url) {
 	fetch(url)
 		.then(r => {
@@ -1711,7 +1626,7 @@ function fetchAndDrawPlacefile(url) {
 		.catch(e => {
 			if (e instanceof TypeError) {
 				// Network/CORS error — retry through proxy
-				const proxyUrl = buildProxyUrl(url);
+				const proxyUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(url);
 				fetch(proxyUrl)
 					.then(r => {
 						if (!r.ok) throw new Error("Proxy fetch failed: " + r.status);
@@ -1772,14 +1687,6 @@ function setUpPlacefile(url, refreshMs) {
 	if (!isRawText && !isBuiltIn && !config.placefiles.some(p => p.url === url)) {
 		config.placefiles.push({ url: url, enabled: true, refreshMs: refreshMs });
 		localStorage.setItem("weatherAppSettings", JSON.stringify(config));
-	}
-}
-
-function refreshAllPlacefiles() {
-	for (const [url, entry] of Object.entries(window.placefileLayers)) {
-		if (entry && entry.enabled) {
-			fetchAndDrawPlacefile(url);
-		}
 	}
 }
 

@@ -1,12 +1,14 @@
 // The order to sort the alerts
 const order = [
-	"Watch-Background",
-	"Watch",
-	"Advisory-Background",
-	"Advisory",
-	"Statement",
+	"Tornado Warning",
+	"Severe Thunderstorm Warning",
 	"Warning-Background",
 	"Warning",
+	"Statement",
+	"Advisory-Background",
+	"Advisory",
+	"Watch-Background",
+	"Watch",
 ];
 
 async function mergeWatchPolygons(data, watchSource = "none") {

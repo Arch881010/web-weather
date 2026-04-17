@@ -1,4 +1,3 @@
-
 // Creates a new map
 const map = L.map("map", {
 	preferCanvas: true,
