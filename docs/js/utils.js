@@ -920,10 +920,19 @@ function playSound(markerName, textToSpeak) {
 }
 
 window.placefileLayers = window.placefileLayers || {};
+const PLACEFILE_PROXY_BASE = "https://data.arch1010.dev/proxy?url=";
 
-function parseGRLevelXPlacefile(text) {
+function parseGRLevelXPlacefile(text, sourceUrl) {
 	const features = [];
 	const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+	const baseUrl = (() => {
+		if (typeof sourceUrl !== "string") return null;
+		const trimmed = sourceUrl.trim();
+		if (!trimmed) return null;
+		if (/^https?:\/\//i.test(trimmed)) return trimmed;
+		if (/^\/\//.test(trimmed)) return "https:" + trimmed;
+		return null;
+	})();
 
 	let currentColor = [255, 255, 255, 255];
 	let currentFont = { size: 12, name: "Arial" };
@@ -935,6 +944,7 @@ function parseGRLevelXPlacefile(text) {
 	let coords = [];
 	let cmdMeta = {};         // label, width, etc. from the command header
 	let objectIcons = [];     // collected icons inside Object: ... End:
+	const iconFiles = {};
 
 	function rgbaToHex(r, g, b, a) {
 		const hex = "#" + [r, g, b].map(c => Math.max(0, Math.min(255, c)).toString(16).padStart(2, "0")).join("");
@@ -1237,7 +1247,7 @@ function parseGRLevelXPlacefile(text) {
 					imgUrl = "https:" + filename;
 				}
 				// Route through proxy
-				const proxiedUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(imgUrl);
+				const proxiedUrl = PLACEFILE_PROXY_BASE + encodeURIComponent(imgUrl);
 				iconFiles[fileIndex] = { width: iconW, height: iconH, columns: numCols, rows: numRows, url: proxiedUrl };
 			}
 			continue;
@@ -1356,6 +1366,7 @@ function parseGRLevelXPlacefile(text) {
 
 	return {
 		geojson: { type: "FeatureCollection", features },
+		iconFiles,
 		refreshSeconds,
 		title,
 	};
@@ -1629,31 +1640,38 @@ async function drawPlacefile(url, text) {
 }
 
 function fetchAndDrawPlacefile(url) {
-	fetch(url)
-		.then(r => {
-			if (!r.ok) throw new Error("Fetch failed: " + r.status);
-			return r.text();
-		})
-		.then(text => drawPlacefile(url, text))
-		.catch(e => {
-			if (e instanceof TypeError) {
-				// Network/CORS error — retry through proxy
-				const proxyUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(url);
-				fetch(proxyUrl)
-					.then(r => {
-						if (!r.ok) throw new Error("Proxy fetch failed: " + r.status);
-						return r.text();
-					})
-					.then(text => drawPlacefile(url, text))
-					.catch(e2 => {
-						console.error("Failed to load placefile (via proxy):", url, e2);
-						showNotification("Failed to load placefile: ", url, "#ff4444");
-					});
-				return;
-			}
-			console.error("Failed to load placefile:", url, e);
+	const proxyUrl = PLACEFILE_PROXY_BASE + encodeURIComponent(url);
+
+	let isCrossOrigin = true;
+	try {
+		const parsed = new URL(url, window.location.href);
+		isCrossOrigin = parsed.origin !== window.location.origin;
+	} catch (e) {
+		// If URL parsing fails, use existing behavior and try direct fetch first.
+		isCrossOrigin = false;
+	}
+
+	const candidates = isCrossOrigin ? [proxyUrl, url] : [url, proxyUrl];
+
+	const tryFetch = (index, lastError) => {
+		if (index >= candidates.length) {
+			console.error("Failed to load placefile:", url, lastError);
 			showNotification("Failed to load placefile: ", url, "#ff4444");
-		});
+			return;
+		}
+
+		fetch(candidates[index])
+			.then(r => {
+				if (!r.ok) throw new Error("Fetch failed: " + r.status);
+				return r.text();
+			})
+			.then(text => drawPlacefile(url, text))
+			.catch(e => {
+				tryFetch(index + 1, e);
+			});
+	};
+
+	tryFetch(0, null);
 }
 
 function setUpPlacefile(url, refreshMs) {
