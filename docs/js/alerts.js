@@ -23,6 +23,12 @@ async function mergeWatchPolygons(data, watchSource = "none") {
 }
 
 function sortAlertPolygons(data) {
+	function getLayerGroupRank(event) {
+		const e = (event || "").toLowerCase();
+		if (e.includes("watch")) return 0;
+		return 1;
+	}
+
 	function getSeverityRank(event) {
 		const e = (event || "").toLowerCase();
 		if (e.includes("tornado warning")) return 0;
@@ -33,6 +39,13 @@ function sortAlertPolygons(data) {
 	}
 
 	data.features.sort((a, b) => {
+		const aLayerGroup = getLayerGroupRank(a.properties.event);
+		const bLayerGroup = getLayerGroupRank(b.properties.event);
+
+		if (aLayerGroup !== bLayerGroup) {
+			return aLayerGroup - bLayerGroup;
+		}
+
 		const aIndex = order.findIndex((type) => a.properties.event.includes(type));
 		const bIndex = order.findIndex((type) => b.properties.event.includes(type));
 

@@ -498,6 +498,7 @@ function drawPolygons(data) {
 	data = alertBackgrounds;
 
 	L.geoJSON(data, {
+		pane: "alertsPane",
 		style: function (feature) {
 			return {
 				color: "black", // Outer border color
@@ -507,10 +508,12 @@ function drawPolygons(data) {
 			};
 		},
 		id: "weather-alerts-border",
+		interactive: false,
 	}).addTo(map);
 
 	// Add the GeoJSON layer to the map with color coding
 	L.geoJSON(data, {
+		pane: "alertsPane",
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
@@ -521,7 +524,7 @@ function drawPolygons(data) {
 		},
 		onEachFeature: function (feature, layer) {
 			if (feature.properties) {
-				layer.bindPopup(getPopupText(feature));
+				layer.bindPopup(getPopupText(feature), { pane: "alertsPopupPane" });
 			}
 
 			layer.on("popupopen", function () {
@@ -535,6 +538,7 @@ function drawPolygons(data) {
 		.bringToFront();
 
 	L.geoJSON(alertExtras, {
+		pane: "alertsPane",
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
@@ -1380,8 +1384,8 @@ async function drawPlacefile(url, text) {
 	}
 
 	const parsed = parseGRLevelXPlacefile(text, url);
-	const targetPane = 'placefilesPane';
-	const markerPane = 'placefileMarkerPane';
+	const targetPane = isMDPlacefile ? 'mdPane' : 'placefilesPane';
+	const markerPane = isMDPlacefile ? 'mdPane' : 'placefileMarkerPane';
 
 	// Process sprite sheets: make black pixels transparent
 	const iconFileMap = parsed.iconFiles || {};
@@ -1412,6 +1416,7 @@ async function drawPlacefile(url, text) {
 				weight: feature.properties["stroke-width"] || 2,
 				opacity: feature.properties["stroke-opacity"] || 1,
 				fillColor: feature.properties.fill || feature.properties.color || "#3388ff",
+				fill: false,
 				fillOpacity: 0,
 			};
 		},
@@ -1576,6 +1581,13 @@ async function drawPlacefile(url, text) {
 
 		window.mdsClickHandler = function (event) {
 			if (!config.show.mds || !window.mdsClickTargets || window.mdsClickTargets.length === 0) return;
+			const clickTarget = event && event.originalEvent ? event.originalEvent.target : null;
+			if (clickTarget && typeof clickTarget.closest === "function") {
+				const higherPriorityHit = clickTarget.closest(
+					".leaflet-popup-pane, .leaflet-userMarkersPane-pane, .leaflet-radarIconsPane-pane, .leaflet-placefileMarkerPane-pane, .leaflet-alertsPane-pane"
+				);
+				if (higherPriorityHit) return;
+			}
 			for (let i = window.mdsClickTargets.length - 1; i >= 0; i--) {
 				const target = window.mdsClickTargets[i];
 				const geometry = target.geometry;
