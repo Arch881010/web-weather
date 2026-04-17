@@ -29,8 +29,9 @@ ensurePane('placefilesPane', 750);
 ensurePane('alertsPane', 900);
 ensurePane('mdPane', 860);
 ensurePane('placefileMarkerPane', 940);
-ensurePane('radarIconsPane', 950);
-ensurePane('alertsPopupPane', 1000);
+ensurePane('radarIconsPane', 1060);
+ensurePane('userMarkersPane', 1100);
+ensurePane('alertsPopupPane', 1200);
 
 map.on('zoomend', addCountyBorders);
 

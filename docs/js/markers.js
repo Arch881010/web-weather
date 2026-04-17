@@ -242,9 +242,9 @@ function drawUserMarkers() {
             iconSize: [14, 20],
             iconAnchor: [7, 10],
         });
-        const layer = L.marker([m.lat, m.lng], { icon })
+        const layer = L.marker([m.lat, m.lng], { icon, pane: 'userMarkersPane' })
             .addTo(map)
-            .bindPopup(_userMarkerPopup(m, idx));
+            .bindPopup(_userMarkerPopup(m, idx), { pane: 'alertsPopupPane' });
         userMarkerLayers.push(layer);
     });
 }
@@ -274,6 +274,8 @@ function updateUserMarker(idx, data) {
 document.addEventListener("click", async (e) => {
     const delBtn = e.target.closest(".user-marker-delete");
     if (delBtn) {
+        e.preventDefault();
+        e.stopPropagation();
         const idx = parseInt(delBtn.dataset.idx, 10);
         const confirmed = await showMarkerConfirm("Delete this marker?");
         if (confirmed) {
@@ -284,6 +286,8 @@ document.addEventListener("click", async (e) => {
     }
     const renBtn = e.target.closest(".user-marker-rename");
     if (renBtn) {
+        e.preventDefault();
+        e.stopPropagation();
         const idx = parseInt(renBtn.dataset.idx, 10);
         const markers = _loadUserMarkers();
         const m = markers[idx] || {};
