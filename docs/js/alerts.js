@@ -11,6 +11,79 @@ const order = [
 	"Watch",
 ];
 
+async function mergeWatchPolygons(data, watchSource = "none") {
+	if (!config.show.watches || watchSource !== "legacy-spc") return data;
+
+	const watches = await getWatches({ source: watchSource });
+	if (watches.length > 0) {
+		data.features.push(...watches);
+	}
+
+	return data;
+}
+
+function sortAlertPolygons(data) {
+	function getLayerGroupRank(event) {
+		const e = (event || "").toLowerCase();
+		if (e.includes("watch")) return 0;
+		return 1;
+	}
+
+	function getSeverityRank(event) {
+		const e = (event || "").toLowerCase();
+		if (e.includes("tornado warning")) return 0;
+		if (e.includes("tornado watch")) return 1;
+		if (e.includes("severe thunderstorm warning")) return 2;
+		if (e.includes("severe thunderstorm watch")) return 3;
+		return 4;
+	}
+
+	data.features.sort((a, b) => {
+		const aLayerGroup = getLayerGroupRank(a.properties.event);
+		const bLayerGroup = getLayerGroupRank(b.properties.event);
+
+		if (aLayerGroup !== bLayerGroup) {
+			return aLayerGroup - bLayerGroup;
+		}
+
+		const aIndex = order.findIndex((type) => a.properties.event.includes(type));
+		const bIndex = order.findIndex((type) => b.properties.event.includes(type));
+
+		if (aIndex !== bIndex) {
+			return aIndex - bIndex;
+		}
+
+		const aSeverity = getSeverityRank(a.properties.event);
+		const bSeverity = getSeverityRank(b.properties.event);
+		if (aSeverity !== bSeverity) {
+			return aSeverity - bSeverity;
+		}
+
+		const aTime = new Date(a.properties.sent).getTime();
+		const bTime = new Date(b.properties.sent).getTime();
+		return aTime - bTime;
+	});
+
+	return data;
+}
+
+async function processAlertData(data, watchSource = "none") {
+	data.features = data.features.filter((feature) => feature.geometry !== null);
+
+	if ((localStorage.getItem("hideFloods") ?? true) == true) {
+		data.features = data.features.filter((feature) => {
+			const event = feature.properties.event.toLowerCase();
+			return event !== "flood warning" && event !== "flood advisory";
+		});
+	}
+
+	await mergeWatchPolygons(data, watchSource);
+	sortAlertPolygons(data);
+	drawPolygons(data);
+	current_features = data;
+	return data;
+}
+
 // Function to fetch and update weather alerts
 function updateWeatherAlerts() {
 	if (userSettings.opacity.polygon == 0) {
@@ -31,124 +104,24 @@ function updateWeatherAlerts() {
 		return;
 	}
 
-	// If dev mode is enabled, use local test data instead of remote API
 	if (config.dev.status) {
 		console.info(
 			"Dev mode enabled — loading local test data: ./test-data/" + config.dev.warnings_file
 		);
-		fetch(("./test-data/" + config.dev.warnings_file))
+		fetch("./test-data/" + config.dev.warnings_file)
 			.then((response) => response.json())
-			.then(async (data) => {
-				// Remove features with null geometry
-				data.features = data.features.filter(
-					(feature) => feature.geometry !== null
-				);
-
-				if ((localStorage.getItem("hideFloods") ?? true) == true) {
-					// Exclude Flood Warnings
-					data.features = data.features.filter(
-						(feature) =>
-							feature.properties.event.toLowerCase() !== "flood warning"
-					);
-
-					// Exclude Flood Advisories
-					data.features = data.features.filter(
-						(feature) =>
-							feature.properties.event.toLowerCase() !== "flood advisory"
-					);
-				}
-				if (config.show.watches) {
-					const watches = await getWatches();
-					console.warn("Watches " + watches.toString());
-					for (const watch of watches) {
-						data.features.push(watch);
-					}
-				}
-
-				// Sort alerts and watches
-				data.features.sort((a, b) => {
-					const aIndex = order.findIndex((type) =>
-						a.properties.event.includes(type)
-					);
-					const bIndex = order.findIndex((type) =>
-						b.properties.event.includes(type)
-					);
-
-					if (aIndex !== bIndex) {
-						return bIndex - aIndex;
-					}
-
-					const aTime = new Date(a.properties.sent).getTime();
-					const bTime = new Date(b.properties.sent).getTime();
-					return aTime - bTime;
-				});
-
-				drawPolygons(data);
-				current_features = data;
-			})
+			.then((data) => processAlertData(data))
 			.catch((err) => console.error("Failed to load local test data:", err));
 		return;
 	}
 
-	// Normal production fetch
-	fetch(
-		`${config.api}?status=actual&urgency=Immediate,Expected,Future,Past,Unknown`,
-		{
-			headers: { "User-Agent": "WIP Web Weather App (admin@arch1010.dev)" },
-		}
-	)
+	const alertUrl = `${config.api}?status=actual&urgency=Immediate,Expected,Future,Past,Unknown`;
+
+	fetch(alertUrl, {
+		headers: { "User-Agent": "WIP Web Weather App (admin@arch1010.dev)" },
+	})
 		.then((response) => response.json())
-		.then(async (data) => {
-			// Remove features with null geometry
-			data.features = data.features.filter(
-				(feature) => feature.geometry !== null
-			);
-
-			if ((localStorage.getItem("hideFloods") ?? true) == true) {
-				// Exclude Flood Warnings
-				data.features = data.features.filter(
-					(feature) =>
-						feature.properties.event.toLowerCase() !== "flood warning"
-				);
-
-				// Exclude Flood Advisories
-				data.features = data.features.filter(
-					(feature) =>
-						feature.properties.event.toLowerCase() !== "flood advisory"
-				);
-			}
-			
-			if (config.show.watches) {
-				const watches = await getWatches();
-				console.warn("Watches " + watches.toString());
-				for (const watch of watches) {
-					data.features.push(watch);
-				}
-			}
-
-			// Sort alerts and watches
-			data.features.sort((a, b) => {
-				const aIndex = order.findIndex((type) =>
-					a.properties.event.includes(type)
-				);
-				const bIndex = order.findIndex((type) =>
-					b.properties.event.includes(type)
-				);
-
-				// If event types are different, sort by event type
-				if (aIndex !== bIndex) {
-					return bIndex - aIndex;
-				}
-
-				// If event types are the same, sort by time issued
-				const aTime = new Date(a.properties.sent).getTime();
-				const bTime = new Date(b.properties.sent).getTime();
-				return aTime - bTime;
-			});
-
-			drawPolygons(data);
-			current_features = data;
-		})
+		.then((data) => processAlertData(data))
 		.catch((error) => {
 			console.error(
 				"Primary API failed, falling back to weather.gov API:",
@@ -158,7 +131,7 @@ function updateWeatherAlerts() {
 				console.warn("Already using weather.gov API, no fallback available.");
 				throw new Error("No fallback available");
 			}
-			// Fallback to weather.gov API
+
 			return fetch(
 				"https://api.weather.gov/alerts/active?status=actual&urgency=Immediate,Expected,Future,Past,Unknown",
 				{
@@ -166,58 +139,7 @@ function updateWeatherAlerts() {
 				}
 			)
 				.then((response) => response.json())
-				.then(async (data) => {
-					// Remove features with null geometry
-					data.features = data.features.filter(
-						(feature) => feature.geometry !== null
-					);
-
-					if ((localStorage.getItem("hideFloods") ?? true) == true) {
-						// Exclude Flood Warnings
-						data.features = data.features.filter(
-							(feature) =>
-								feature.properties.event.toLowerCase() !== "flood warning"
-						);
-
-						// Exclude Flood Advisories
-						data.features = data.features.filter(
-							(feature) =>
-								feature.properties.event.toLowerCase() !== "flood advisory"
-						);
-					}
-					console.log(config.show.watches);
-					if (config.show.watches) {
-						const watches = await getWatches();
-						console.warn("Watches " + watches.toString());
-						for (const watch of watches) {
-							data.features.push(watch);
-						}
-					}
-
-					// Sort alerts and watches
-					data.features.sort((a, b) => {
-						const aIndex = order.findIndex((type) =>
-							a.properties.event.includes(type)
-						);
-						const bIndex = order.findIndex((type) =>
-							b.properties.event.includes(type)
-						);
-
-						// If event types are different, sort by event type
-						if (aIndex !== bIndex) {
-							return bIndex - aIndex;
-						}
-
-						// If event types are the same, sort by time issued
-						const aTime = new Date(a.properties.sent).getTime();
-						const bTime = new Date(b.properties.sent).getTime();
-						return aTime - bTime;
-					});
-
-					drawPolygons(data);
-					current_features = data;
-					//config.api = "https://api.weather.gov"; // Update config to use weather.gov API
-				})
+				.then((data) => processAlertData(data, "legacy-spc"))
 				.catch((fallbackError) => {
 					console.error("Both APIs failed:", fallbackError);
 				});

@@ -498,6 +498,7 @@ function drawPolygons(data) {
 	data = alertBackgrounds;
 
 	L.geoJSON(data, {
+		pane: "alertsPane",
 		style: function (feature) {
 			return {
 				color: "black", // Outer border color
@@ -507,10 +508,12 @@ function drawPolygons(data) {
 			};
 		},
 		id: "weather-alerts-border",
+		interactive: false,
 	}).addTo(map);
 
 	// Add the GeoJSON layer to the map with color coding
 	L.geoJSON(data, {
+		pane: "alertsPane",
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
@@ -521,7 +524,7 @@ function drawPolygons(data) {
 		},
 		onEachFeature: function (feature, layer) {
 			if (feature.properties) {
-				layer.bindPopup(getPopupText(feature));
+				layer.bindPopup(getPopupText(feature), { pane: "alertsPopupPane" });
 			}
 
 			layer.on("popupopen", function () {
@@ -535,6 +538,7 @@ function drawPolygons(data) {
 		.bringToFront();
 
 	L.geoJSON(alertExtras, {
+		pane: "alertsPane",
 		style: function (feature) {
 			return {
 				color: feature.properties.color || getColor(feature.properties.event), // Border color
@@ -968,23 +972,75 @@ function parseGRLevelXPlacefile(text) {
 		}
 	}
 
+	function normalizeIconFilename(filename) {
+		let value = String(filename || "").trim();
+		if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+			value = value.slice(1, -1).trim();
+		}
+		return value;
+	}
+
+	function buildSpriteIconElement(fileIdx, iconIdx, xOff, yOff, rotation, tooltip) {
+		const iconDef = iconFiles[fileIdx];
+		if (!iconDef) return null;
+		const maxIcons = Math.max(1, iconDef.columns * iconDef.rows);
+		const oneBasedIndex = Number.isFinite(iconIdx) ? Math.floor(iconIdx) : 1;
+		const spriteIndex = Math.max(0, Math.min(maxIcons - 1, oneBasedIndex - 1));
+		const col = spriteIndex % iconDef.columns;
+		const row = Math.floor(spriteIndex / iconDef.columns);
+		const normalizedTooltip = String(tooltip || "").replace(/\\n/g, "\n");
+		return {
+			type: "icon",
+			xOff, yOff, rotation,
+			width: iconDef.width,
+			height: iconDef.height,
+			spriteX: col * iconDef.width,
+			spriteY: row * iconDef.height,
+			url: iconDef.url,
+			tooltip: normalizedTooltip,
+		};
+	}
+
 	function flushMultiLine() {
 		if (!mode) return;
 
 		if (mode === "line" && coords.length >= 2) {
+			const isClosedRing = coords.length >= 4 && (() => {
+				const first = coords[0];
+				const last = coords[coords.length - 1];
+				return first[0] === last[0] && first[1] === last[1];
+			})();
 			const labelParts = parseLabelParts(cmdMeta.label);
-			features.push({
-				type: "Feature",
-				geometry: { type: "LineString", coordinates: coords.map(c => [c[1], c[0]]) },
-				properties: {
-					stroke: rgbaToHex(...currentColor),
-					"stroke-width": cmdMeta.width || 2,
-					"stroke-opacity": currentOpacity(),
-					name: cmdMeta.label || "",
-					title: labelParts.title,
-					description: labelParts.description,
-				},
-			});
+			if (isClosedRing) {
+				const ring = coords.map(c => [c[1], c[0]]);
+				features.push({
+					type: "Feature",
+					geometry: { type: "Polygon", coordinates: [ring] },
+					properties: {
+						stroke: rgbaToHex(...currentColor),
+						"stroke-width": cmdMeta.width || 2,
+						"stroke-opacity": currentOpacity(),
+						fill: rgbaToHex(...currentColor),
+						"fill-opacity": Math.max(currentOpacity() * 0.15, 0.02),
+						name: cmdMeta.label || "",
+						title: labelParts.title,
+						description: labelParts.description,
+					},
+				});
+			} else {
+				features.push({
+					type: "Feature",
+					geometry: { type: "LineString", coordinates: coords.map(c => [c[1], c[0]]) },
+					properties: {
+						stroke: rgbaToHex(...currentColor),
+						"stroke-width": cmdMeta.width || 2,
+						"stroke-opacity": currentOpacity(),
+						name: cmdMeta.label || "",
+						title: labelParts.title,
+						description: labelParts.description,
+					},
+				});
+			}
 		} else if (mode === "polygon" && coords.length >= 3) {
 			const ring = coords.map(c => [c[1], c[0]]);
 			if (ring.length > 0) ring.push(ring[0]); // close ring
@@ -1060,26 +1116,54 @@ function parseGRLevelXPlacefile(text) {
 		if (mode === "object") {
 			const iconMatch = trimmed.match(/^Icon:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
 			if (iconMatch) {
-				const lat = parseFloat(iconMatch[1]);
-				const lon = parseFloat(iconMatch[2]);
-				const label = iconMatch[6] || "";
-				if (!isNaN(lat) && !isNaN(lon)) {
-					features.push({
-						type: "Feature",
-						geometry: { type: "Point", coordinates: [lon, lat] },
-						properties: {
-							name: label,
-							color: rgbaToHex(...currentColor),
-							"marker-type": "icon",
-						},
-					});
+				const xOff = parseFloat(iconMatch[1]);
+				const yOff = parseFloat(iconMatch[2]);
+				const rotation = parseFloat(iconMatch[3]);
+				const fileIdx = parseInt(iconMatch[4], 10);
+				const iconIdx = parseInt(iconMatch[5], 10);
+				const tooltip = iconMatch[6] || "";
+				if (tooltip) {
+					objectElements.push({ type: "icon-tooltip", tooltip });
 				}
+				const iconEl = buildSpriteIconElement(fileIdx, iconIdx, xOff, yOff, rotation, tooltip);
+				if (iconEl) objectElements.push(iconEl);
 			}
 			continue;
 		}
 
 		if (/^Title:\s*/i.test(trimmed)) {
 			title = trimmed.replace(/^Title:\s*/i, "").trim();
+			continue;
+		}
+
+		if (/^Icon:\s*/i.test(trimmed)) {
+			const iconMatch = trimmed.match(/^Icon:\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*(?:,\s*"([^"]*)")?/i);
+			if (iconMatch) {
+				const lat = parseFloat(iconMatch[1]);
+				const lon = parseFloat(iconMatch[2]);
+				const rotation = parseFloat(iconMatch[3]);
+				const fileIdx = parseInt(iconMatch[4], 10);
+				const iconIdx = parseInt(iconMatch[5], 10);
+				const tooltip = String(iconMatch[6] || "").replace(/\\n/g, "\n");
+				const iconEl = buildSpriteIconElement(fileIdx, iconIdx, 0, 0, rotation, tooltip);
+				if (!isNaN(lat) && !isNaN(lon) && iconEl) {
+					const tooltipLines = tooltip ? tooltip.split("\n") : [];
+					const firstLine = tooltipLines[0] || "";
+					const remainingLines = tooltipLines.length > 1 ? tooltipLines.slice(1).join("\n") : "";
+					features.push({
+						type: "Feature",
+						geometry: { type: "Point", coordinates: [lon, lat] },
+						properties: {
+							"marker-type": "icon",
+							iconElements: [iconEl],
+							title: firstLine,
+							description: remainingLines,
+							name: firstLine,
+							popupButtonText: tooltip ? "Show Full Text" : undefined,
+						},
+					});
+				}
+			}
 			continue;
 		}
 
@@ -1110,8 +1194,52 @@ function parseGRLevelXPlacefile(text) {
 			}
 			continue;
 		}
-
 		if (/^TimeRange:/i.test(trimmed) || /^Threshold:/i.test(trimmed)) {
+			continue;
+		}
+
+		// IconFile: fileIndex, iconWidth, iconHeight, numColumns, numRows, filename
+		if (/^IconFile:\s*/i.test(trimmed)) {
+			const ifMatch = trimmed.match(/^IconFile:\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(.+)$/i);
+			if (ifMatch) {
+				const fileIndex = parseInt(ifMatch[1], 10);
+				const iconW = parseInt(ifMatch[2], 10);
+				const iconH = parseInt(ifMatch[3], 10);
+				let numCols = parseInt(ifMatch[4], 10);
+				let numRows = parseInt(ifMatch[5], 10);
+				const filename = normalizeIconFilename(ifMatch[6]);
+
+				// Generalized icon sheet grid normalization for known exceptions
+				// Map of known icon sheet URLs (or patterns) to their correct grid sizes
+				const iconSheetGridOverrides = [
+					{
+						pattern: /spotternetwork\.org\/iconsheets\/SN_Reports_096\.png/i,
+						cols: 3,
+						rows: 4
+					},
+					// Add more overrides here as needed:
+					// { pattern: /someother\.org\/iconsheet\.png/i, cols: X, rows: Y }
+				];
+				for (const override of iconSheetGridOverrides) {
+					if (override.pattern.test(filename)) {
+						numCols = override.cols;
+						numRows = override.rows;
+						break;
+					}
+				}
+				// Resolve relative URL against placefile base
+				let imgUrl = filename;
+				const isAbsolute = /^(https?:)?\/\//i.test(filename) || /^data:/i.test(filename) || /^blob:/i.test(filename);
+				if (baseUrl && !isAbsolute) {
+					const base = baseUrl.replace(/\/[^/]*$/, "/");
+					imgUrl = base + filename;
+				} else if (/^\/\//.test(filename)) {
+					imgUrl = "https:" + filename;
+				}
+				// Route through proxy
+				const proxiedUrl = "https://data.arch1010.dev/proxy?url=" + encodeURIComponent(imgUrl);
+				iconFiles[fileIndex] = { width: iconW, height: iconH, columns: numCols, rows: numRows, url: proxiedUrl };
+			}
 			continue;
 		}
 
@@ -1136,9 +1264,6 @@ function parseGRLevelXPlacefile(text) {
 			// Check for trailing coordinate after the closing quote
 			const afterPolyLabel = trimmed.replace(/^Polygon:\s*(?:"[^"]*")?\s*/i, "");
 			if (afterPolyLabel) parseCoordLine(afterPolyLabel, coords);
-			mode = "triangles";
-			coords = [];
-			cmdMeta = {};
 			continue;
 		}
 
@@ -1236,30 +1361,71 @@ function parseGRLevelXPlacefile(text) {
 	};
 }
 
-function drawPlacefile(url, text) {
+// Cache for sprite sheets with black pixels made transparent
+const transparentSpriteCache = {};
+
+function makeBlackTransparent(imageUrl) {
+	if (transparentSpriteCache[imageUrl]) {
+		return Promise.resolve(transparentSpriteCache[imageUrl]);
+	}
+	// Spotter Network sprite sheets contain black glyphs and labels that would be
+	// damaged by black-to-transparent conversion, so keep the original image.
+	transparentSpriteCache[imageUrl] = imageUrl;
+	return Promise.resolve(imageUrl);
+}
+
+async function drawPlacefile(url, text) {
 	const existing = window.placefileLayers[url];
+	const isMDPlacefile = url === config.mdsUrl;
 
 	// Remove old layer if it exists
 	if (existing && existing.layer) {
 		try { map.removeLayer(existing.layer); } catch (e) { }
 	}
 
-	const parsed = parseGRLevelXPlacefile(text);
+	const parsed = parseGRLevelXPlacefile(text, url);
+	const targetPane = isMDPlacefile ? 'mdPane' : 'placefilesPane';
+	const markerPane = isMDPlacefile ? 'mdPane' : 'placefileMarkerPane';
+
+	// Process sprite sheets: make black pixels transparent
+	const iconFileMap = parsed.iconFiles || {};
+	const uniqueUrls = [...new Set(Object.values(iconFileMap).map(function (f) { return f.url; }))];
+	const processedUrlMap = {};
+	if (uniqueUrls.length > 0) {
+		const results = await Promise.all(uniqueUrls.map(function (u) { return makeBlackTransparent(u); }));
+		for (var i = 0; i < uniqueUrls.length; i++) {
+			processedUrlMap[uniqueUrls[i]] = results[i];
+		}
+		// Replace URLs in all icon elements within features
+		parsed.geojson.features.forEach(function (f) {
+			var icons = f.properties && f.properties.iconElements;
+			if (icons) {
+				icons.forEach(function (el) {
+					if (processedUrlMap[el.url]) el.url = processedUrlMap[el.url];
+				});
+			}
+		});
+	}
 
 	const geoLayer = L.geoJSON(parsed.geojson, {
+		pane: targetPane,
+		interactive: true,
 		style: function (feature) {
 			return {
 				color: feature.properties.stroke || feature.properties.color || "#3388ff",
 				weight: feature.properties["stroke-width"] || 2,
 				opacity: feature.properties["stroke-opacity"] || 1,
 				fillColor: feature.properties.fill || feature.properties.color || "#3388ff",
-				fillOpacity: feature.properties["fill-opacity"] || 0.2,
+				fill: false,
+				fillOpacity: 0,
 			};
 		},
 		pointToLayer: function (feature, latlng) {
 			const markerType = feature.properties["marker-type"];
 			if (markerType === "text") {
 				return L.marker(latlng, {
+					pane: markerPane,
+					interactive: true,
 					icon: L.divIcon({
 						className: "placefile-text-label",
 						html: '<span style="color:' + (feature.properties.color || "#fff") +
@@ -1271,7 +1437,67 @@ function drawPlacefile(url, text) {
 					}),
 				});
 			}
+			if (markerType === "object") {
+				const textEls = feature.properties.textElements || [];
+				const iconEls = feature.properties.iconElements || [];
+				let html = '<div style="position: relative;">';
+				for (const el of iconEls) {
+					const rotStyle = el.rotation ? ' transform: rotate(' + el.rotation + 'deg);' : '';
+					html += '<div style="position: absolute;' +
+						' left:' + (el.xOff - el.width / 2) + 'px; top:' + (-(el.yOff) - el.height / 2) + 'px;' +
+						' width:' + el.width + 'px; height:' + el.height + 'px;' +
+						' background: url(\'' + el.url + '\') no-repeat -' + el.spriteX + 'px -' + el.spriteY + 'px;' +
+						rotStyle + '"></div>';
+				}
+				for (const el of textEls) {
+					// GRLevelX text alignment: negative x → right-align (text ends at offset),
+					// positive x → left-align (text starts at offset), vertically centered
+					const xTranslate = el.xOff < 0 ? '-100%' : '0';
+					html += '<span style="position: absolute;' +
+						' left:' + el.xOff + 'px; top:' + (-(el.yOff)) + 'px;' +
+						' color:' + (el.color || '#fff') + ';' +
+						' font-size:' + (el.fontSize || 12) + 'px;' +
+						' white-space: nowrap;' +
+						' transform: translate(' + xTranslate + ', -50%);">' +
+						el.label + '</span>';
+				}
+				html += '</div>';
+				return L.marker(latlng, {
+					pane: markerPane,
+					interactive: true,
+					icon: L.divIcon({
+						className: "placefile-text-label",
+						html: html,
+						iconSize: [0, 0],
+						iconAnchor: [0, 0],
+					}),
+				});
+			}
+			if (markerType === "icon") {
+				const iconEls = feature.properties.iconElements || [];
+				let html = '<div style="position: relative;">';
+				for (const el of iconEls) {
+					const rotStyle = el.rotation ? ' transform: rotate(' + el.rotation + 'deg);' : '';
+					html += '<div style="position: absolute;' +
+						' left:' + (el.xOff - el.width / 2) + 'px; top:' + (-(el.yOff) - el.height / 2) + 'px;' +
+						' width:' + el.width + 'px; height:' + el.height + 'px;' +
+						' background: url(\'' + el.url + '\') no-repeat -' + el.spriteX + 'px -' + el.spriteY + 'px;' +
+						rotStyle + '"></div>';
+				}
+				html += '</div>';
+				return L.marker(latlng, {
+					pane: markerPane,
+					interactive: true,
+					icon: L.divIcon({
+						className: "placefile-icon-label",
+						html: html,
+						iconSize: [0, 0],
+						iconAnchor: [0, 0],
+					}),
+				});
+			}
 			return L.circleMarker(latlng, {
+				pane: markerPane,
 				radius: 6,
 				color: feature.properties.color || "#3388ff",
 				fillColor: feature.properties.color || "#3388ff",
@@ -1333,13 +1559,49 @@ function drawPlacefile(url, text) {
 				</div>`;
 			}
 
-			layer.bindPopup(popupHtml);
+			  layer.bindPopup(popupHtml, { pane: 'alertsPopupPane' });
 			layer.on("popupopen", function () {
 				window.cachedAlertText = fullText;
 			});
 		},
 		id: "placefile-" + url,
 	}).addTo(map);
+
+	if (isMDPlacefile) {
+		if (window.mdsClickHandler) {
+			map.off("click", window.mdsClickHandler);
+		}
+
+		window.mdsClickTargets = [];
+		geoLayer.eachLayer(function (layer) {
+			if (!layer.feature || !layer.feature.geometry) return;
+			if (layer.feature.geometry.type !== "Polygon") return;
+			window.mdsClickTargets.push({ layer: layer, geometry: layer.feature.geometry });
+		});
+
+		window.mdsClickHandler = function (event) {
+			if (!config.show.mds || !window.mdsClickTargets || window.mdsClickTargets.length === 0) return;
+			const clickTarget = event && event.originalEvent ? event.originalEvent.target : null;
+			if (clickTarget && typeof clickTarget.closest === "function") {
+				const higherPriorityHit = clickTarget.closest(
+					".leaflet-popup-pane, .leaflet-userMarkersPane-pane, .leaflet-radarIconsPane-pane, .leaflet-placefileMarkerPane-pane, .leaflet-alertsPane-pane"
+				);
+				if (higherPriorityHit) return;
+			}
+			for (let i = window.mdsClickTargets.length - 1; i >= 0; i--) {
+				const target = window.mdsClickTargets[i];
+				const geometry = target.geometry;
+				if (!geometry || geometry.type !== "Polygon" || !geometry.coordinates || !geometry.coordinates[0]) continue;
+				if (isPointInPolygon(event.latlng.lat, event.latlng.lng, geometry.coordinates[0])) {
+					try { target.layer.openPopup(); } catch (e) { }
+					try { target.layer.bringToFront(); } catch (e) { }
+					break;
+				}
+			}
+		};
+
+		map.on("click", window.mdsClickHandler);
+	}
 
 	if (existing) {
 		existing.layer = geoLayer;
@@ -1465,6 +1727,11 @@ function togglePlacefile(url, enabled) {
 				if (map.hasLayer(entry.layer)) map.removeLayer(entry.layer);
 			}
 		}
+	} else if (enabled) {
+		// Disabled placefiles are not initialized at startup.
+		// When user re-enables one, initialize and fetch it now.
+		const pfCfg = (config.placefiles || []).find((p) => p.url === url);
+		setUpPlacefile(url, pfCfg?.refreshMs);
 	}
 	const pf = (config.placefiles || []).find(p => p.url === url);
 	if (pf) pf.enabled = enabled;

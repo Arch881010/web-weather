@@ -62,12 +62,31 @@ ${data.instruction}
 }
 
 function getWatchText(properties) {
-	let text = properties.description;
+	if (properties.watchEvent || properties.watchSent || properties.watchExpires) {
+		const watchLabel = properties.watchEvent || properties.event || "Watch";
+		const watchNumber = properties.watchNumber ? ` #${properties.watchNumber}` : "";
+		const watchSummary = [
+			`${watchLabel}${watchNumber}`,
+			properties.countyCount ? `${properties.countyCount} counties affected` : "",
+			properties.watchExpires ? `Expires ${formatDateTime(properties.watchExpires, "UTC")}` : "",
+		].filter(Boolean).join("\n");
+
+		return {
+			event: `${watchLabel}${watchNumber}`,
+			sender: properties.senderName || "Storm Prediction Center",
+			sent: properties.sent,
+			headline: properties.headline || "",
+			description: properties.description || watchSummary,
+			instruction: properties.instruction,
+		};
+	}
+
+	let text = properties.description || "";
 	properties.headline = properties.headline || "";
 
 	// Let's clean up the text
 	text = text.replace(/&amp;/g, "&");
-	textAsArray = text
+	const textAsArray = text
 		.split("\n")
 		.map((line) => {
 			line = line.replace("*", "");
@@ -76,11 +95,11 @@ function getWatchText(properties) {
 		})
 		.filter((line) => line !== "");
 
-	properties.event = textAsArray[2];
-	properties.senderName = textAsArray[3];
+	properties.event = textAsArray[2] || properties.event;
+	properties.senderName = textAsArray[3] || properties.senderName;
 	let findheadline = true;
 	let i = 5;
-	while (findheadline) {
+	while (findheadline && i < textAsArray.length) {
 		if (textAsArray[i].toTitleCase().includes("For")) {
 			properties.headline +=
 				textAsArray[i].toTitleCase().split("For")[0].trim() + ".";
@@ -91,7 +110,7 @@ function getWatchText(properties) {
 		i++;
 	}
 
-	const data = {
+	return {
 		event: properties.event,
 		sender: properties.senderName,
 		sent: properties.sent,
@@ -99,9 +118,6 @@ function getWatchText(properties) {
 		description: text,
 		instruction: properties.instruction,
 	};
-
-	i = 5;
-	return data;
 }
 
 function formatDateTime(dateTimeStr, timeZoneAbbr) {

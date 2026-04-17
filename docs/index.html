@@ -155,8 +155,10 @@
 								<span class="unit">%</span>
 							</div>
 						</div>
-						<div class="setting-item" style="margin-top: 4px;">
-							<label for="county-borders-zoom-toggle">Only show counties when zoomed in</label>
+						<div class="setting-item" style="margin-top: 4px">
+							<label for="county-borders-zoom-toggle"
+								>Only show counties when zoomed in</label
+							>
 							<div class="input-group">
 								<input type="checkbox" id="county-borders-zoom-toggle" />
 							</div>
@@ -164,7 +166,7 @@
 					</div>
 
 					<div class="settings-section">
-						<h3><i class="fas fa-satellite-dish"></i> Radar Product</h3>
+						<h3><i class="fas fa-satellite-dish"></i> WMS Radar Product</h3>
 						<div class="setting-item">
 							<label for="radar-tilemap">Product Type</label>
 							<select id="radar-tilemap">
@@ -182,7 +184,7 @@
 							</select>
 						</div>
 						<div class="setting-item">
-							<label for="radar-site">Radar Sites</label>
+							<label for="radar-site">Radar Site</label>
 							<input
 								type="text"
 								id="radar-site"
@@ -192,14 +194,21 @@
 						<div class="setting-item">
 							<label for="radar-data-level">Data Level</label>
 							<select id="radar-data-level">
-								<option value="2" selected>Basic-Resolution</option>
-								<option value="3">Super-Resolution</option>
+								<option value="3" selected>Level 3</option>
+								<option value="2">Level 2</option>
 							</select>
 						</div>
 						<div class="setting-item">
-							<label for="radar-site-product">Site Product</label>
+							<label for="radar-site-product">Radar Site Product</label>
 							<select id="radar-site-product">
 								<!-- Populated dynamically based on data level -->
+							</select>
+						</div>
+						<div class="setting-item">
+							<label for="radar-site-tilt">Radar Tilt</label>
+							<select id="radar-site-tilt">
+								<option value="">Auto (Best)</option>
+								<!-- Populated dynamically after sweep fetch -->
 							</select>
 						</div>
 						<div class="setting-item">
@@ -350,6 +359,7 @@
 		<script src="./js/config.js"></script>
 		<script src="./js/prototypes.js"></script>
 		<script src="./js/utils.js"></script>
+		<script src="./js/nexrad.js"></script>
 		<script src="./leaflet/leaflet.js"></script>
 		<script src="./js/radarRenderer.js"></script>
 		<script src="./js/radar.js"></script>

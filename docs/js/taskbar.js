@@ -80,6 +80,13 @@ document.addEventListener("DOMContentLoaded", () => {
 			if (typeof updateColormapDropdown === "function") {
 				updateColormapDropdown(productSelect.value);
 			}
+			// Update tilt selector with cached tilts for new product
+			if (typeof updateTiltDropdown === "function") {
+				const site = (config.radarApi?.site || "").toUpperCase();
+				const product = productSelect.value;
+				const tiltCacheKey = `${site}:${product}`;
+				updateTiltDropdown([], tiltCacheKey);
+			}
 		});
 	}
 
@@ -92,7 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
 			config.radarApi.level = newLevel;
 			localStorage.setItem("weatherAppSettings", JSON.stringify(config));
 			if (typeof syncProductDropdownsToLevel === "function") {
-				syncProductDropdownsToLevel();
+				syncProductDropdownsToLevel(config.radarApi?.site);
 			}
 			// Update colormap dropdown for the (possibly changed) product
 			if (typeof updateColormapDropdown === "function") {

@@ -1,236 +1,177 @@
 /** @format */
 
-const cachedWatches = {};
+const LEGACY_SPC_WATCH_INDEX_URL = "https://www.spc.noaa.gov/products/watch/";
 
-async function fetchKMZToGeoJSON(kmzUrl) {
-	try {
-		console.log(`Fetching KMZ from URL: ${kmzUrl}`);
-		const response = await fetch(kmzUrl);
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
-		}
-		const buffer = await response.arrayBuffer();
-		const zip = await JSZip.loadAsync(buffer);
-		const kmlFile = Object.keys(zip.files).find((filename) =>
-			filename.endsWith(".kml")
-		);
-		if (!kmlFile) {
-			throw new Error("No KML file found in the KMZ archive");
-		}
-		const kmlText = await zip.files[kmlFile].async("string");
-		//console.warn(kmlText);
+function buildLegacyWatchSummary({ watchEvent, watchNumber, description }) {
+	const sent = new Date().toISOString();
+	const expires = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 
-		const parser = new DOMParser();
-		const kml = parser.parseFromString(kmlText, "application/xml");
-
-		//console.warn(kml);
-
-		const geojson = toGeoJSON.kml(kml);
-		console.log(`Successfully converted KML to GeoJSON`);
-		return geojson.features;
-	} catch (error) {
-		console.error("Error fetching or processing KMZ file:", error);
-		return [];
-	}
+	return {
+		event: `${watchEvent}${watchNumber ? ` #${watchNumber}` : ""}`,
+		senderName: "Storm Prediction Center",
+		sent,
+		expires,
+		headline: "",
+		isDefault: false,
+		description,
+		parameters: {
+			hail: {
+				maxHail: "N/A",
+				radarIndicated: "Radar Indicated",
+			},
+			wind: {
+				windSpeed: "N/A",
+				radarIndicated: "Radar Indicated",
+			},
+			tornado: {
+				possible: /tornado/i.test(watchEvent) ? "Possible" : "N/A",
+				severity: "",
+			},
+			storm: {
+				severity: "",
+			},
+		},
+		watchEvent,
+		watchNumber: watchNumber || "",
+		watchSent: sent,
+		watchExpires: expires,
+		watchColor: /tornado/i.test(watchEvent) ? "#840404" : "#f5be1d",
+		countyCount: 0,
+	};
 }
 
-async function getKMZsfromKMZ(kmzUrl) {
-	try {
-		console.log(`Fetching KMZ from URL: ${kmzUrl}`);
-		const response = await fetch(kmzUrl);
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
-		}
-		const buffer = await response.arrayBuffer();
-		const zip = await JSZip.loadAsync(buffer);
-		const kmlFile = Object.keys(zip.files).find((filename) =>
-			filename.endsWith(".kml")
-		);
-		if (!kmlFile) {
-			throw new Error("No KML file found in the KMZ archive");
-		}
-		const kmlText = await zip.files[kmlFile].async("string");
-		const parser = new DOMParser();
-		const kml = parser.parseFromString(kmlText, "application/xml");
-		const links = kml.querySelectorAll("Link > href");
-		const hrefs = Array.from(links)
-			.map((link) => link.textContent)
-			.filter((href) =>
-				/https:\/\/www\.spc\.noaa\.gov\/products\/watch\/WW\d{4}_SAW\.kmz/.test(
-					href
-				)
-			);
-		if (hrefs.length === 0) {
-			throw new Error("No valid href links found in the KML file");
-		}
-		console.log(hrefs);
-		//console.log(`Found href links: ${hrefs}`);
-		return hrefs;
-	} catch (error) {
-		console.error("Error fetching or processing KMZ file:", error);
-		return [];
+function parseLegacyLatLonPolygon(htmlText) {
+	const latLonMatch = htmlText.match(/LAT\.\.\.LON\s+([0-9\s]+)/i);
+	if (!latLonMatch) {
+		return null;
 	}
+
+	const rawPoints = latLonMatch[1]
+		.trim()
+		.split(/\s+/)
+		.filter((token) => /^\d{8}$/.test(token));
+
+	if (rawPoints.length < 3) {
+		return null;
+	}
+
+	const ring = rawPoints.map((token) => {
+		const lat = Number.parseInt(token.slice(0, 4), 10) / 100;
+		const lon = -Number.parseInt(token.slice(4), 10) / 100;
+		return [lon, lat];
+	});
+
+	if (ring.length > 0) {
+		const first = ring[0];
+		const last = ring[ring.length - 1];
+		if (first[0] !== last[0] || first[1] !== last[1]) {
+			ring.push(first.slice());
+		}
+	}
+
+	return {
+		type: "Polygon",
+		coordinates: [ring],
+	};
 }
 
-async function getWatches() {
-	let kmzUrl = "https://www.spc.noaa.gov/products/watch/ActiveWW.kmz";
-	if (config.dev.status) kmzUrl = "./test-data/2025/WW0008_SAW.kmz";
+function decodeHtml(htmlText) {
+	return htmlText
+		.replace(/&nbsp;/g, " ")
+		.replace(/&amp;/g, "&")
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&#39;/g, "'")
+		.replace(/&quot;/g, '"');
+}
 
+function stripTags(htmlText) {
+	return htmlText.replace(/<[^>]*>/g, "");
+}
+
+function parseLegacyWatchMetadata(htmlText) {
+	const titleMatch = htmlText.match(/<title>\s*Storm Prediction Center\s+([^<]+?)\s*<\/title>/i);
+	const fallbackTitle = titleMatch?.[1]?.trim() || "Severe Thunderstorm Watch";
+	const watchEventMatch = fallbackTitle.match(/(Tornado Watch|Severe Thunderstorm Watch)/i);
+	const watchNumberMatch = fallbackTitle.match(/(\d+)/);
+	const watchEvent = watchEventMatch ? watchEventMatch[1] : "Watch";
+	const watchNumber = watchNumberMatch ? watchNumberMatch[1] : "";
+
+	const preMatch = htmlText.match(/<pre>([\s\S]*?)<\/pre>/i);
+	const description = preMatch
+		? decodeHtml(stripTags(preMatch[1])).trim()
+		: fallbackTitle;
+
+	return {
+		watchEvent,
+		watchNumber,
+		description,
+	};
+}
+
+async function getLegacySpcWatchPageUrls() {
+	const response = await fetch(LEGACY_SPC_WATCH_INDEX_URL);
+	if (!response.ok) {
+		throw new Error(`Legacy SPC index HTTP error! status: ${response.status}`);
+	}
+
+	const htmlText = await response.text();
+	const matches = [...htmlText.matchAll(/ww(\d{4})\.html/gi)];
+	const watchNumbers = [...new Set(matches.map((match) => match[1]))];
+
+	return watchNumbers.map(
+		(number) => `${LEGACY_SPC_WATCH_INDEX_URL}ww${number}.html`
+	);
+}
+
+async function getLegacySpcWatches() {
 	try {
-		let kmlFilesToFetch = [];
-		let geojsonArray = [];
-
-		if (kmzUrl != "./test-data/ww/2025/WW0008_SAW.kmz") {
-			kmlFilesToFetch = await getKMZsfromKMZ(kmzUrl);
-			console.log();
-			for (const link of kmlFilesToFetch) {
-				console.log(`Processing KML file: ${link}`);
-				let tempgeojsonArray = await fetchKMZToGeoJSON(link);
-				for (const feature of tempgeojsonArray) {
-					geojsonArray.push(feature);
-				}
-			}
-		} else {
-			geojsonArray = await fetchKMZToGeoJSON(kmzUrl);
+		const watchPageUrls = await getLegacySpcWatchPageUrls();
+		if (watchPageUrls.length === 0) {
+			return [];
 		}
 
-		const result = await Promise.all(
-			geojsonArray.map(async (feature) => {
-				console.log(`Processing feature: ${feature}`);
-				const properties = {
-					id: feature.id,
-					type: "wx:Alert",
-					event: feature.properties.name,
-					description: feature.properties.description,
-					// Add other properties from the KML file as needed
-				};
-
-				// Extract additional information from the KML file
-				const extendedData = feature.properties.ExtendedData || {};
-				for (const [key, value] of Object.entries(extendedData)) {
-					properties[key] = value;
-				}
-
-				// Fetch the full description
-				const idMatch = properties.event.match(/WW (\d+)/);
-				console.error(idMatch);
-				if (idMatch) {
-					const id = idMatch[1];
-					properties.full_desc = await fetchWatchDescription(id);
-				} else {
-					properties.full_desc = "No description available";
-				}
-
-				properties.description = properties.full_desc;
-
-				const currentEvent = properties.event.toTitleCase();
-				const watchNumber = currentEvent.match(/\d+/);
-				const watchType = currentEvent.match(
-					/(Tornado|Severe Thunderstorm|Severe Tstm)/
-				);
-				let strWatchType = [];
+		const results = await Promise.all(
+			watchPageUrls.map(async (pageUrl) => {
 				try {
-					strWatchType[0] = watchType["0"];
-				} catch (e) {
-					strWatchType = "Unknown";
+					const response = await fetch(pageUrl);
+					if (!response.ok) {
+						return null;
+					}
+
+					const htmlText = await response.text();
+					const geometry = parseLegacyLatLonPolygon(htmlText);
+					if (!geometry) {
+						return null;
+					}
+
+					const metadata = parseLegacyWatchMetadata(htmlText);
+					return {
+						id: `spc-watch-${metadata.watchNumber || pageUrl}`,
+						type: "Feature",
+						geometry,
+						properties: buildLegacyWatchSummary(metadata),
+					};
+				} catch (error) {
+					console.warn("Failed to load legacy SPC watch page:", pageUrl, error);
+					return null;
 				}
-
-				if (strWatchType == "Severe Tstm") strWatchType = "Severe Thunderstorm";
-
-				console.info(watchType[0] + "|" + currentEvent);
-
-				// Extract end time from the event string
-				const currentEventTime = currentEvent.split(" ");
-				const endTimeString = currentEventTime.pop();
-				currentEventTime.pop();
-				const startTimeString = currentEventTime.pop();
-				const startDay = startTimeString.slice(0, 2);
-				const startTimeStr = startTimeString.slice(2);
-				const endDay = endTimeString.slice(0, 2);
-				const endTimeStr = endTimeString.slice(2);
-				const dat = new Date();
-				const startTime = new Date(
-					`${dat.getFullYear()}-${String(dat.getMonth() + 1).padStart(
-						2,
-						"0"
-					)}-${startDay}T${startTimeStr.slice(0, 2)}:${startTimeStr.slice(
-						2,
-						4
-					)}:00Z`
-				).toISOString();
-				const endTime = new Date(
-					`${dat.getFullYear()}-${String(dat.getMonth() + 1).padStart(
-						2,
-						"0"
-					)}-${endDay}T${endTimeStr.slice(0, 2)}:${endTimeStr.slice(2, 4)}:00Z`
-				).toISOString();
-
-				return {
-					id: feature.id,
-					type: "Feature",
-					geometry: feature.geometry,
-					properties: {
-						event: `${strWatchType} Watch #${watchNumber}`,
-						senderName: "Storm Prediction Center",
-						sent: startTime,
-						expires: endTime,
-						headline: "",
-						isDefault: false,
-						description: properties.description,
-						parameters: {
-							hail: {
-								maxHail: properties.maxHailSize || "N/A",
-								radarIndicated: (
-									properties.hailThreat || "Radar Indicated"
-								).toTitleCase(),
-							},
-							wind: {
-								windSpeed: properties.maxWindGust || "N/A",
-								radarIndicated: (
-									properties.windThreat || "Radar Indicated"
-								).toTitleCase(),
-							},
-							tornado: {
-								possible: (properties.tornadoDetection || "N/A").toTitleCase(),
-								severity: (properties.tornadoDamageThreat || "").toTitleCase(),
-							},
-							originalFeature: feature,
-						},
-					},
-				};
 			})
 		);
-		console.log(`Successfully processed all features`);
-		return result;
+
+		return results.filter(Boolean);
 	} catch (error) {
-		console.error("Error fetching or processing KMZ file:", error);
+		console.error("Error fetching legacy SPC watch data:", error);
 		return [];
 	}
 }
 
-async function fetchWatchDescription(id) {
-	try {
-		const watchURL = `https://www.spc.noaa.gov/products/watch/${new Date().getFullYear()}/ww${id.padStart(
-			4,
-			"0"
-		)}.html`;
+async function getWatches(options = {}) {
+	const source = options?.source || "none";
 
-		if (cachedWatches[id] !== undefined) {
-			console.info("Already cached the text for ww#" + id);
-			return cachedWatches[id];
-		}
-
-		const response = await fetch(watchURL);
-		if (!response.ok) {
-			throw new Error(`HTTP error! status: ${response.status}`);
-		}
-		const text = await response.text();
-		const doc = new DOMParser().parseFromString(text, "text/html");
-		const fullDesc = doc.querySelectorAll("pre")[0].innerHTML;
-		cachedWatches[id] = fullDesc;
-		return fullDesc;
-	} catch (error) {
-		console.error("Error fetching watch description:", error);
-		return "No description available";
+	if (source === "legacy-spc") {
+		return getLegacySpcWatches();
 	}
+
+	return [];
 }

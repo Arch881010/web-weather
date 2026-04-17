@@ -84,17 +84,18 @@ const PURPLE_ORANGE_VEL_STOPS = [
 ];
 
 const CC_COLORS = [
-    [0.20,   0,   0,   0, 150],
-    [0.40, 100, 100, 100, 180],
-    [0.60, 176, 196, 222, 200],
-    [0.70,   0, 191, 255, 200],
-    [0.80,   0, 128, 255, 200],
-    [0.85,   0, 255,   0, 200],
-    [0.90, 255, 255,   0, 200],
-    [0.95, 255, 165,   0, 200],
-    [0.97, 255,   0,   0, 200],
-    [1.00, 255,   0, 255, 200],
-    [1.05, 255, 255, 255, 200],
+    // Converted from a % scale palette:
+    // Product: CC, Units: %, Scale: 100, Step: 10
+    [0.28, 119, 119, 140, 200],
+    [0.35,  43,  40, 113, 200],
+    [0.45, 150, 145, 179, 200],
+    [0.60, 249, 252, 245, 200],
+    [0.70, 135, 254,  88, 200],
+    [0.85, 242, 193,   0, 200],
+    [0.90, 255,  33,   0, 200],
+    [1.00, 154,  29,  60, 200],
+    [1.005,254, 233, 249, 200],
+    [1.05, 106,  77, 118, 200],
 ];
 
 // Each stop: [t (0..1), R, G, B]
@@ -226,7 +227,7 @@ function getBuiltinColormapData(product, colormapName) {
         const stops = BUILTIN_CC_CMAPS[key];
         if (stops) return { type: "stepped", stops };
     }
-    if (norm === "reflectivity") {
+    if (norm === "reflectivity" || norm === "nrot") {
         if (key === "nwsref")          return { type: "stepped",      stops: NWS_REF_COLORS };
         if (key === "turbo")           return { type: "interpolated", stops: TURBO_STOPS };
         if (key === "viridis")         return { type: "interpolated", stops: VIRIDIS_STOPS };
@@ -243,6 +244,21 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
     const lut = new Uint8ClampedArray(256 * 4);
     const cmapKey = (cmap || "").toLowerCase();
 
+    // Built-ins take precedence so imported/custom maps cannot shadow names
+    // like NWSCC/NWSRef/NWSVel and change interpretation unexpectedly.
+    const builtin = getBuiltinColormapData(product, cmap);
+    if (builtin) {
+        if (builtin.type === "velocity") {
+            _buildVelocityLUT(lut, vmin, vmax, builtin.stops);
+        } else if (builtin.type === "interpolated") {
+            _buildInterpolatedLUT(lut, builtin.stops, builtin.alpha || 200);
+        } else {
+            _buildSteppedLUT(lut, builtin.stops, vmin, vmax, true);
+        }
+        lut[255 * 4 + 3] = 0;
+        return lut;
+    }
+
     // Check custom registry first (works for any product)
     const custom = getRegisteredColormap(cmap) || getRegisteredColormap(cmapKey);
     if (custom) {
@@ -251,7 +267,7 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
         } else if (custom.type === "interpolated") {
             _buildInterpolatedLUT(lut, custom.stops, custom.alpha || 200);
         } else {
-            _buildSteppedLUT(lut, custom.stops, vmin, vmax);
+            _buildSteppedLUT(lut, custom.stops, vmin, vmax, true);
         }
         lut[255 * 4 + 3] = 0;
         return lut;
@@ -262,10 +278,10 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
         _buildVelocityLUT(lut, vmin, vmax, velStops);
     } else if (product === "cc") {
         const ccStops = BUILTIN_CC_CMAPS[cmapKey] || CC_COLORS;
-        _buildSteppedLUT(lut, ccStops, vmin, vmax);
+        _buildSteppedLUT(lut, ccStops, vmin, vmax, true);
     } else if (product === "classification") {
         _buildClassificationLUT(lut, vmin, vmax);
-    } else if (product === "reflectivity") {
+    } else if (product === "reflectivity" || product === "nrot") {
         if (cmapKey === "turbo") {
             _buildInterpolatedLUT(lut, TURBO_STOPS, 200);
         } else if (cmapKey === "viridis") {
@@ -273,7 +289,7 @@ function buildRadarColorLUT(product, vmin, vmax, cmap) {
         } else if (cmapKey === "homeyerrainbow") {
             _buildInterpolatedLUT(lut, HOMEYER_STOPS, 200);
         } else {
-            _buildSteppedLUT(lut, NWS_REF_COLORS, vmin, vmax);
+            _buildSteppedLUT(lut, NWS_REF_COLORS, vmin, vmax, true);
         }
     } else {
         // fallback: grayscale
@@ -317,23 +333,50 @@ function _buildClassificationLUT(lut, vmin, vmax) {
     lut[255 * 4 + 3] = 0;
 }
 
-function _buildSteppedLUT(lut, stops, vmin, vmax) {
+function _buildSteppedLUT(lut, stops, vmin, vmax, smooth = false) {
+    if (!Array.isArray(stops) || stops.length === 0) {
+        lut[255 * 4 + 3] = 0;
+        return;
+    }
+
+    const sortedStops = [...stops].sort((a, b) => a[0] - b[0]);
+
     for (let i = 0; i < 255; i++) {
         const physVal = vmin + (i / 254) * (vmax - vmin);
-        let matched = false;
-        for (let s = stops.length - 1; s >= 0; s--) {
-            if (physVal >= stops[s][0]) {
-                lut[i * 4]     = stops[s][1];
-                lut[i * 4 + 1] = stops[s][2];
-                lut[i * 4 + 2] = stops[s][3];
-                lut[i * 4 + 3] = stops[s][4];
-                matched = true;
+        if (physVal < sortedStops[0][0]) {
+            lut[i * 4 + 3] = 0;
+            continue;
+        }
+
+        let lo = sortedStops.length - 1;
+        for (let s = 0; s < sortedStops.length; s++) {
+            if (physVal < sortedStops[s][0]) {
+                lo = Math.max(0, s - 1);
                 break;
             }
         }
-        if (!matched) {
-            lut[i * 4 + 3] = 0;
+
+        const hi = Math.min(sortedStops.length - 1, lo + 1);
+        const loStop = sortedStops[lo];
+        const hiStop = sortedStops[hi];
+
+        let t = 0;
+        if (smooth && hi > lo) {
+            const span = hiStop[0] - loStop[0];
+            t = span > 0 ? Math.max(0, Math.min(1, (physVal - loStop[0]) / span)) : 0;
         }
+
+        const r = Math.round(loStop[1] + (hiStop[1] - loStop[1]) * t);
+        const g = Math.round(loStop[2] + (hiStop[2] - loStop[2]) * t);
+        const b = Math.round(loStop[3] + (hiStop[3] - loStop[3]) * t);
+        const aLo = loStop[4] ?? 200;
+        const aHi = hiStop[4] ?? aLo;
+        const a = Math.min(255, Math.round((aLo + (aHi - aLo) * t) * 1.2));
+
+        lut[i * 4] = r;
+        lut[i * 4 + 1] = g;
+        lut[i * 4 + 2] = b;
+        lut[i * 4 + 3] = a;
     }
 }
 
@@ -353,7 +396,7 @@ function _buildInterpolatedLUT(lut, stops, alpha) {
         lut[i * 4]     = Math.round(stops[lo][1] + (stops[hi][1] - stops[lo][1]) * frac);
         lut[i * 4 + 1] = Math.round(stops[lo][2] + (stops[hi][2] - stops[lo][2]) * frac);
         lut[i * 4 + 2] = Math.round(stops[lo][3] + (stops[hi][3] - stops[lo][3]) * frac);
-        lut[i * 4 + 3] = alpha;
+        lut[i * 4 + 3] = Math.min(255, Math.round(alpha * 1.2));
     }
     lut[255 * 4 + 3] = 0;
 }
@@ -379,7 +422,7 @@ function _buildVelocityLUT(lut, vmin, vmax, stops) {
         lut[i * 4]     = Math.round(stops[lo][1] + (stops[hi][1] - stops[lo][1]) * t);
         lut[i * 4 + 1] = Math.round(stops[lo][2] + (stops[hi][2] - stops[lo][2]) * t);
         lut[i * 4 + 2] = Math.round(stops[lo][3] + (stops[hi][3] - stops[lo][3]) * t);
-        lut[i * 4 + 3] = 170;
+        lut[i * 4 + 3] = 255;
     }
     lut[255 * 4 + 3] = 0;
 }
@@ -432,6 +475,17 @@ const RadarCanvasLayer = L.GridLayer.extend({
             sweepData.firstGateRange + sweepData.numGates * sweepData.gateWidth;
         this._noData = sweepData.noDataValue || 255;
 
+        this._azimuths = Array.isArray(sweepData.azimuths)
+            ? sweepData.azimuths.map((a) => {
+                const n = Number(a);
+                return Number.isFinite(n) ? ((n % 360) + 360) % 360 : 0;
+            })
+            : [];
+        this._sortedAzimuthPairs = this._azimuths
+            .map((az, idx) => ({ az, idx }))
+            .sort((a, b) => a.az - b.az);
+        this._useActualAzimuthLookup = this._shouldUseActualAzimuthLookup();
+
         // Simple azimuth step for nearest-neighbor lookup
         this._azStep = 360 / this._numRadials;
         this._azOffset = sweepData.azimuths[0] || 0;
@@ -460,6 +514,53 @@ const RadarCanvasLayer = L.GridLayer.extend({
         L.GridLayer.prototype.initialize.call(this, options);
     },
 
+    _shouldUseActualAzimuthLookup: function () {
+        if (!Array.isArray(this._azimuths) || this._azimuths.length < 4) return false;
+
+        const n = this._azimuths.length;
+        const expected = 360 / n;
+        let maxDiff = 0;
+        const pairs = this._sortedAzimuthPairs;
+
+        for (let i = 0; i < n; i++) {
+            const a0 = pairs[i].az;
+            const a1 = pairs[(i + 1) % n].az;
+            const step = ((a1 - a0 + 360) % 360) || expected;
+            const diff = Math.abs(step - expected);
+            if (diff > maxDiff) maxDiff = diff;
+            if (maxDiff > 0.35) return true;
+        }
+
+        return false;
+    },
+
+    _findNearestRadialIndex: function (azimuth) {
+        if (!this._useActualAzimuthLookup || this._azimuths.length !== this._numRadials) {
+            let radial = Math.round((azimuth - this._azOffset) / this._azStep);
+            radial = ((radial % this._numRadials) + this._numRadials) % this._numRadials;
+            return radial;
+        }
+
+        const pairs = this._sortedAzimuthPairs;
+        const n = pairs.length;
+
+        let lo = 0;
+        let hi = n;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (pairs[mid].az < azimuth) lo = mid + 1;
+            else hi = mid;
+        }
+
+        const i1 = lo % n;
+        const i0 = (lo - 1 + n) % n;
+        const d0raw = Math.abs(azimuth - pairs[i0].az);
+        const d1raw = Math.abs(azimuth - pairs[i1].az);
+        const d0 = Math.min(d0raw, 360 - d0raw);
+        const d1 = Math.min(d1raw, 360 - d1raw);
+        return d0 <= d1 ? pairs[i0].idx : pairs[i1].idx;
+    },
+
     /**
      * Sample the underlying gate value at a given LatLng. Returns null when
      * outside coverage or when the gate is no-data.
@@ -467,11 +568,13 @@ const RadarCanvasLayer = L.GridLayer.extend({
     getValueAtLatLng: function (latlng) {
         if (!latlng) return null;
 
-        const metersPerDegLat = 111320;
-        const metersPerDegLon = 111320 * this._cosRadarLat;
-
-        const dx = (latlng.lng - this._radarLon) * metersPerDegLon;
-        const dy = (latlng.lat - this._radarLat) * metersPerDegLat;
+        const RAD = Math.PI / 180;
+        const EARTH_R = 6371000;
+        const dLat = (latlng.lat - this._radarLat) * RAD;
+        const dLon = (latlng.lng - this._radarLon) * RAD;
+        const meanLat = ((latlng.lat + this._radarLat) * 0.5) * RAD;
+        const dx = dLon * Math.cos(meanLat) * EARTH_R;
+        const dy = dLat * EARTH_R;
         const rangeSq = dx * dx + dy * dy;
         const maxRangeSq = this._maxRange * this._maxRange;
         if (rangeSq <= 0 || rangeSq > maxRangeSq) return null;
@@ -482,8 +585,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
 
         let az = (Math.atan2(dx, dy) * (180 / Math.PI));
         if (az < 0) az += 360;
-        let radial = Math.round((az - this._azOffset) / this._azStep);
-        radial = ((radial % this._numRadials) + this._numRadials) % this._numRadials;
+        const radial = this._findNearestRadialIndex(az);
 
         const idx = radial * this._numGates + gateIdx;
         const val = this._gateData[idx];
@@ -499,7 +601,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const baseProd = this._sweepData.product;
         let units = "";
         if (baseProd === "reflectivity") units = "dBZ";
-        else if (baseProd === "velocity" || baseProd === "srv") units = "m/s";
+        else if (baseProd === "velocity" || baseProd === "srv" || baseProd === "nrot") units = "m/s";
         else if (baseProd === "cc") units = "ρHV";
 
         return { product: this._sweepData.product, value: physical, units };
@@ -516,6 +618,8 @@ const RadarCanvasLayer = L.GridLayer.extend({
     _renderTile: function (ctx, coords) {
         const TILE = 256;
         const map = this._map;
+        const RAD = Math.PI / 180;
+        const EARTH_R = 6371000;
 
         // Tile pixel bounds → lat/lon
         const nwPoint = L.point(coords.x * TILE, coords.y * TILE);
@@ -530,14 +634,15 @@ const RadarCanvasLayer = L.GridLayer.extend({
 
         // Quick rejection: tile corners vs radar max range
         const maxRangeM = this._maxRange;
-        const metersPerDegLat = 111320;
-        const metersPerDegLon = 111320 * this._cosRadarLat;
 
         // Nearest point on tile rect to radar center
         const nearLat = Math.max(south, Math.min(north, this._radarLat));
         const nearLon = Math.max(west, Math.min(east, this._radarLon));
-        const ndx = (nearLon - this._radarLon) * metersPerDegLon;
-        const ndy = (nearLat - this._radarLat) * metersPerDegLat;
+        const ndLat = (nearLat - this._radarLat) * RAD;
+        const ndLon = (nearLon - this._radarLon) * RAD;
+        const ndMeanLat = ((nearLat + this._radarLat) * 0.5) * RAD;
+        const ndx = ndLon * Math.cos(ndMeanLat) * EARTH_R;
+        const ndy = ndLat * EARTH_R;
         if (ndx * ndx + ndy * ndy > maxRangeM * maxRangeM) {
             return; // tile entirely outside radar range
         }
@@ -545,8 +650,12 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const imageData = ctx.createImageData(TILE, TILE);
         const pixels = imageData.data;
 
-        const latStep = (north - south) / TILE;
         const lonStep = (east - west) / TILE;
+        const rowLats = new Float64Array(TILE);
+        for (let py = 0; py < TILE; py++) {
+            const y = coords.y * TILE + py + 0.5;
+            rowLats[py] = map.unproject(L.point(nwPoint.x + 0.5, y), coords.z).lat;
+        }
 
         const radarLat = this._radarLat;
         const radarLon = this._radarLon;
@@ -565,17 +674,20 @@ const RadarCanvasLayer = L.GridLayer.extend({
         const invAzStep = 1 / azStep;
         const RAD_TO_DEG = 180 / Math.PI;
 
-        // Use nearest-neighbor for classification (categorical data),
-        // bilinear interpolation for all other products
+        // Use nearest-neighbor everywhere (legacy behaviour) so we do not
+        // introduce any client-side smoothing unless explicitly requested.
         const useInterp = false;
 
         for (let py = 0; py < TILE; py++) {
-            const lat = north - (py + 0.5) * latStep;
-            const dy = (lat - radarLat) * metersPerDegLat;
+            const lat = rowLats[py];
+            const dLat = (lat - radarLat) * RAD;
+            const dy = dLat * EARTH_R;
+            const cosMeanLat = Math.cos(((lat + radarLat) * 0.5) * RAD);
 
             for (let px = 0; px < TILE; px++) {
                 const lon = west + (px + 0.5) * lonStep;
-                const dx = (lon - radarLon) * metersPerDegLon;
+                const dLon = (lon - radarLon) * RAD;
+                const dx = dLon * cosMeanLat * EARTH_R;
 
                 const rangeSq = dx * dx + dy * dy;
                 if (rangeSq > maxRangeSq || rangeSq < firstRangeSq) continue;
@@ -630,8 +742,7 @@ const RadarCanvasLayer = L.GridLayer.extend({
                     // ── Nearest-neighbor for classification (categorical) ──
                     const gateIdx = gateF | 0;
                     if (gateIdx >= numGates) continue;
-                    let azIdx = Math.round(azF) % numRadials;
-                    if (azIdx < 0) azIdx += numRadials;
+                    const azIdx = this._findNearestRadialIndex(azimuth);
                     val = gateData[azIdx * numGates + gateIdx];
                     if (val === noData) continue;
                 }
@@ -811,7 +922,7 @@ function _colorbarMouseMove(e) {
 
     const baseProd = _colorbarProduct;
     let text;
-    if (baseProd === "velocity" || baseProd === "srv") {
+    if (baseProd === "velocity" || baseProd === "srv" || baseProd === "nrot") {
         const mph = val * 2.23694;
         text = `${val.toFixed(1)} m/s (${mph.toFixed(1)} mph)`;
     } else if (baseProd === "cc") {
