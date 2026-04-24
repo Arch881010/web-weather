@@ -369,6 +369,7 @@ function drawPolygons(data) {
 		if (evt.includes("tornado warning")) return 40;
 		if (evt.includes("severe thunderstorm warning")) return 30;
 		if (evt.includes("warning")) return 20;
+		if (evt.includes("statement")) return 15;
 		if (evt.includes("watch")) return 10;
 		return 0;
 	}
