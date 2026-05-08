@@ -1212,16 +1212,26 @@ class Level3Parser {
     if (numRadials === 0 || numBins === 0) return null;
 
     // Packet 16 scale_factor varies by product/source.
-    // Infer gate width when plausible; this is critical for TDWR where 150m gates are common.
+    // Keep conservative legacy inference for WSR-88D; use broader decoding for TDWR.
     let gateWidthM = 250;
-    if (Number.isFinite(scaleFactor) && scaleFactor > 0 && scaleFactor < 100) {
-      const inferred = Math.round((1.0 / scaleFactor) * 1000);
-      if (inferred >= 100 && inferred <= 1000) gateWidthM = inferred;
+    if (Number.isFinite(scaleFactor) && scaleFactor > 0) {
+      let inferred = null;
+      if (isTdwrSite(this.site) && scaleFactor >= 100) {
+        inferred = Math.round((1.0 / (scaleFactor / 1000.0)) * 1000);
+      } else {
+        inferred = Math.round((1.0 / scaleFactor) * 1000);
+      }
+      if (Number.isFinite(inferred) && inferred >= 100 && inferred <= 1000) {
+        gateWidthM = inferred;
+      }
     }
     if (isTdwrSite(this.site)) {
-      // TDWR products are typically 150m near-range resolution.
-      if (!Number.isFinite(gateWidthM) || gateWidthM < 100 || gateWidthM > 300) {
-        gateWidthM = 150;
+      const isTdwrReflectivity = this.product === 'reflectivity';
+      const expectedGateWidth = isTdwrReflectivity ? 300 : 150;
+      const minGateWidth = isTdwrReflectivity ? 200 : 120;
+      const maxGateWidth = isTdwrReflectivity ? 450 : 220;
+      if (!Number.isFinite(gateWidthM) || gateWidthM < minGateWidth || gateWidthM > maxGateWidth) {
+        gateWidthM = expectedGateWidth;
       }
     }
     const firstGateM  = Math.max(0, firstBin) * gateWidthM;
@@ -1796,6 +1806,31 @@ function normalizeTdwrRange(sweep, site, product) {
   };
 }
 
+function normalizeTdwrGeometry(sweep, site, product) {
+  if (!isTdwrSite(site) || !sweep) return sweep;
+  if (!['reflectivity', 'velocity', 'srv', 'nrot'].includes(product)) return sweep;
+
+  const out = { ...sweep };
+  const gateWidth = Number(out.gateWidth);
+  const firstGate = Number(out.firstGateRange);
+
+  // TDWR products are not all the same resolution:
+  // reflectivity (TZL) is commonly long-range/coarser than velocity products.
+  const expectedGateWidth = product === 'reflectivity' ? 300 : 150;
+  const minGateWidth = product === 'reflectivity' ? 200 : 120;
+  const maxGateWidth = product === 'reflectivity' ? 450 : 220;
+  if (!Number.isFinite(gateWidth) || gateWidth < minGateWidth || gateWidth > maxGateWidth) {
+    out.gateWidth = expectedGateWidth;
+  }
+
+  if (!Number.isFinite(firstGate) || firstGate < 0 || firstGate > 5000) {
+    out.firstGateRange = 0;
+  }
+
+  out.maxRange = Math.round((out.firstGateRange + out.numGates * out.gateWidth) * 10) / 10;
+  return out;
+}
+
 class NexradClient {
   constructor(options = {}) {
     this._cache    = new Map(); // site → { key, sweeps, time }
@@ -2069,7 +2104,11 @@ class NexradClient {
   }
 
   async _getSweepLevel3Internal(site, product, force = false) {
-    const mnemonics = LEVEL3_PRODUCT_MNEMONICS[product];
+    let mnemonics = LEVEL3_PRODUCT_MNEMONICS[product];
+    if (isTdwrSite(site)) {
+      if (product === 'reflectivity') mnemonics = ['TZL'];
+      if (product === 'velocity') mnemonics = ['TV0'];
+    }
     if (!mnemonics) throw new Error(`No Level III mnemonics for product: ${product}`);
 
     let lastError;
@@ -2103,6 +2142,7 @@ class NexradClient {
 
     const parser = new Level3Parser(rawData, product, site);
     let sweep  = parser.parse();
+    sweep = normalizeTdwrGeometry(sweep, site, product);
     sweep = normalizeTdwrRange(sweep, site, product);
 
     const cfg = PRODUCT_CONFIG[product] || PRODUCT_CONFIG.reflectivity;

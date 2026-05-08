@@ -12,7 +12,7 @@ const default_config = {
 		watches: true,
 		mds: true,
 	},
-	mdsUrl: "https://placefiles.arch1010.dev/mds.php?full=true",
+	mdsUrl: "https://placefiles.arch1010.dev/spc/mds.php?full=true",
 	alertSound: false,
 	radarTilemap: "n0q",
 	placefiles: [],
