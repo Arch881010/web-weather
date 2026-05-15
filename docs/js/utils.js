@@ -1852,3 +1852,73 @@ function toggleMDs(enabled) {
 		}
 	}
 }
+
+function sponsorMePlease() {
+	// Check if user has already clicked a sponsor link
+	if (localStorage.getItem("sponsorNotificationDismissed")) {
+		return;
+	}
+
+	const container = document.getElementById("notification-container");
+	if (!container) return;
+
+	const toast = document.createElement("div");
+	toast.className = "notification-toast";
+	toast.style.backgroundColor = "#4CAF50";
+
+	const titleMsg = document.createElement("span");
+	titleMsg.textContent = "Support Me! ";
+	titleMsg.style.fontWeight = "bold";
+
+	const linksContainer = document.createElement("span");
+	linksContainer.style.marginLeft = "10px";
+
+	const links = [
+		{ text: "Buy Me a Coffee", url: "https://buymeacoffee.com/arch1010_" },
+		{ text: "Patreon", url: "https://patreon.com/Arch881010" },
+		{ text: "GitHub Sponsors", url: "https://github.com/sponsors/Arch881010" }
+	];
+
+	links.forEach((link, index) => {
+		const anchor = document.createElement("a");
+		anchor.href = link.url;
+		anchor.textContent = link.text;
+		anchor.style.color = "white";
+		anchor.style.textDecoration = "underline";
+		anchor.style.cursor = "pointer";
+		anchor.target = "_blank";
+		anchor.rel = "noopener noreferrer";
+
+		anchor.onclick = (e) => {
+			localStorage.setItem("sponsorNotificationDismissed", "true");
+			dismissToast(toast);
+		};
+
+		linksContainer.appendChild(anchor);
+
+		if (index < links.length - 1) {
+			const separator = document.createTextNode(" | ");
+			linksContainer.appendChild(separator);
+		}
+	});
+
+	const closeBtn = document.createElement("button");
+	closeBtn.className = "notification-toast-close";
+	closeBtn.innerHTML = "&#x2715;";
+	closeBtn.onclick = () => {
+		localStorage.setItem("sponsorNotificationDismissed", "true");
+		dismissToast(toast);
+	};
+
+	toast.appendChild(titleMsg);
+	toast.appendChild(linksContainer);
+	toast.appendChild(closeBtn);
+	container.appendChild(toast);
+
+	setTimeout(() => dismissToast(toast), 8000);
+}
+
+// Call sponsor notification after map is fully loaded
+document.addEventListener("mapLoaded", () => {
+	sponsorMePlease();
+});
