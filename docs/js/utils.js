@@ -756,6 +756,18 @@ function drawPolygons(data) {
 		return 0;
 	}
 
+	// Draw lower-priority alerts first so tornado warnings stay visually on top.
+	function getRenderPriority(feature) {
+		const evt = ((feature?.properties?.event || "") + "").toLowerCase();
+
+		if (evt.includes("tornado warning")) return 40;
+		if (evt.includes("severe thunderstorm warning")) return 30;
+		if (evt.includes("warning")) return 20;
+		if (evt.includes("statement")) return 15;
+		if (evt.includes("watch")) return 10;
+		return 0;
+	}
+
 	// Keep watches and warnings separate when deduping
 	function dedupeCategory(eventType) {
 		const evt = (eventType || "").toLowerCase();
@@ -901,6 +913,13 @@ function drawPolygons(data) {
 		}
 		alertBackgrounds.features.push(feature);
 	}
+
+	alertBackgrounds.features.sort(
+		(a, b) => getRenderPriority(a) - getRenderPriority(b)
+	);
+	alertExtras.features.sort(
+		(a, b) => getRenderPriority(a) - getRenderPriority(b)
+	);
 
 	alertBackgrounds.features.sort(
 		(a, b) => getRenderPriority(a) - getRenderPriority(b)
@@ -1683,6 +1702,8 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 	const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 	const parseOptions = options || {};
 	const promoteClosedLineRingsToPolygons = parseOptions.promoteClosedLineRingsToPolygons === true;
+	const parseOptions = options || {};
+	const promoteClosedLineRingsToPolygons = parseOptions.promoteClosedLineRingsToPolygons === true;
 	const baseUrl = (() => {
 		if (typeof sourceUrl !== "string") return null;
 		const trimmed = sourceUrl.trim();
@@ -1815,11 +1836,14 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 
 		if (mode === "line" && coords.length >= 2) {
 			const labelParts = parseLabelParts(cmdMeta.label);
+			const labelParts = parseLabelParts(cmdMeta.label);
 			const isClosedRing = coords.length >= 4 && (() => {
 				const first = coords[0];
 				const last = coords[coords.length - 1];
 				return first[0] === last[0] && first[1] === last[1];
 			})();
+
+			if (promoteClosedLineRingsToPolygons && isClosedRing) {
 
 			if (promoteClosedLineRingsToPolygons && isClosedRing) {
 				const ring = coords.map(c => [c[1], c[0]]);
@@ -1837,6 +1861,8 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 						description: labelParts.description,
 						placefileCommand: "polygon",
 						sourceCommand: "line",
+						placefileCommand: "polygon",
+						sourceCommand: "line",
 					},
 				});
 			} else {
@@ -1850,6 +1876,7 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 						name: cmdMeta.label || "",
 						title: labelParts.title,
 						description: labelParts.description,
+						placefileCommand: "line",
 						placefileCommand: "line",
 					},
 				});
@@ -1871,6 +1898,7 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 					name: cmdMeta.label || "",
 					title: labelParts.title,
 					description: labelParts.description,
+					placefileCommand: "polygon",
 					placefileCommand: "polygon",
 				},
 			});
@@ -2165,6 +2193,7 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 						"fill-opacity": currentOpacity() * 0.15,
 						name: label,
 						placefileCommand: "circle",
+						placefileCommand: "circle",
 					},
 				});
 			}
@@ -2205,6 +2234,9 @@ async function drawPlacefile(url, text) {
 		try { map.removeLayer(existing.layer); } catch (e) { }
 	}
 
+	const parsed = parseGRLevelXPlacefile(text, url, {
+		promoteClosedLineRingsToPolygons: isMDPlacefile,
+	});
 	const parsed = parseGRLevelXPlacefile(text, url, {
 		promoteClosedLineRingsToPolygons: isMDPlacefile,
 	});
