@@ -129,7 +129,12 @@ document.addEventListener("DOMContentLoaded", function () {
 	if (openSettingsBtn) {
 		openSettingsBtn.addEventListener("click", () => {
 			renderPlacefileList();
+			renderAlertTypeFilters();
+			renderAlertColorManager();
 		});
 	}
+
+	renderAlertTypeFilters();
+	renderAlertColorManager();
 });
 // EOC

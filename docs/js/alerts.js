@@ -79,8 +79,10 @@ async function processAlertData(data, watchSource = "none") {
 
 	await mergeWatchPolygons(data, watchSource);
 	sortAlertPolygons(data);
-	drawPolygons(data);
 	current_features = data;
+	renderAlertTypeFilters();
+	renderAlertColorManager();
+	drawPolygons(getFilteredAlertData(data));
 	return data;
 }
 

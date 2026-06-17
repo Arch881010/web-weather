@@ -8,6 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
 		if (!settingsPanel) return;
 		settingsPanel.style.display = "flex";
 		document.body.classList.add("settings-open");
+		if (typeof renderAlertTypeFilters === "function") renderAlertTypeFilters();
+		if (typeof renderAlertColorManager === "function") renderAlertColorManager();
 		if (!focusId) return;
 
 		requestAnimationFrame(() => {
@@ -70,6 +72,14 @@ document.addEventListener("DOMContentLoaded", () => {
 	if (quickCmap) {
 		quickCmap.addEventListener("click", () => {
 			openSettingsPanel("radar-cmap");
+		});
+	}
+
+	const quickPlacefiles = document.getElementById("quick-placefile-layers");
+	if (quickPlacefiles) {
+		quickPlacefiles.addEventListener("click", () => {
+			if (typeof renderPlacefileList === "function") renderPlacefileList();
+			openSettingsPanel("placefile-layer-section");
 		});
 	}
 
