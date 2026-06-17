@@ -789,6 +789,14 @@ function drawPolygons(data) {
 		return shouldPrefix ? `${cleanTag.toTitleCase()} ${event}` : event;
 	}
 
+	function getAlertStrokeColor(feature) {
+		return feature?.properties?.appColor ||
+			getColor(feature?.properties?.event) ||
+			feature?.properties?.color ||
+			feature?.properties?.watchColor ||
+			colorsArray.Default;
+	}
+
 	// Always clear previous alert layers so expired alerts disappear
 	clearLayers([
 		"weather-alerts",
@@ -862,15 +870,15 @@ function drawPolygons(data) {
 		if (eventName.includes("tornado")) {
 			switch (tag) {
 				case "considerable":
-					feature.properties.color = getAlertVariantColor("tornado.considerable.base");
+					feature.properties.appColor = getAlertVariantColor("tornado.considerable.base");
 					break;
 				case "catastrophic":
-					feature.properties.color = getAlertVariantColor("tornado.catastrophic.base");
-					newFeature.properties.color = getAlertVariantColor("tornado.catastrophic.extra");
+					feature.properties.appColor = getAlertVariantColor("tornado.catastrophic.base");
+					newFeature.properties.appColor = getAlertVariantColor("tornado.catastrophic.extra");
 					pushFeature = true;
 					break;
 				case "observed":
-					newFeature.properties.color = getAlertVariantColor("tornado.observed.extra");
+					newFeature.properties.appColor = getAlertVariantColor("tornado.observed.extra");
 					pushFeature = true;
 					break;
 				default:
@@ -879,16 +887,16 @@ function drawPolygons(data) {
 		} else if (eventName.includes("severe th")) {
 			switch (tag) {
 				case "destructive":
-					newFeature.properties.color = getAlertVariantColor("severeThunderstorm.destructive.extra");
+					newFeature.properties.appColor = getAlertVariantColor("severeThunderstorm.destructive.extra");
 					//newfeature.properties.size.border = size - change;
 					pushFeature = true;
 					break;
 				case "considerable":
-					newFeature.properties.color = getAlertVariantColor("severeThunderstorm.considerable.extra");
+					newFeature.properties.appColor = getAlertVariantColor("severeThunderstorm.considerable.extra");
 					pushFeature = true;
 					break;
 				case "possible":
-					newFeature.properties.color = getAlertVariantColor("severeThunderstorm.possible.extra");
+					newFeature.properties.appColor = getAlertVariantColor("severeThunderstorm.possible.extra");
 					pushFeature = true;
 					break;
 				default:
@@ -921,13 +929,6 @@ function drawPolygons(data) {
 		(a, b) => getRenderPriority(a) - getRenderPriority(b)
 	);
 
-	alertBackgrounds.features.sort(
-		(a, b) => getRenderPriority(a) - getRenderPriority(b)
-	);
-	alertExtras.features.sort(
-		(a, b) => getRenderPriority(a) - getRenderPriority(b)
-	);
-
 	data = alertBackgrounds;
 
 	L.geoJSON(data, {
@@ -949,7 +950,7 @@ function drawPolygons(data) {
 		pane: "alertsPane",
 		style: function (feature) {
 			return {
-				color: feature.properties.color || getColor(feature.properties.event), // Border color
+				color: getAlertStrokeColor(feature), // Border color
 				weight: feature.properties.size.polygon || size, // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
@@ -980,7 +981,7 @@ function drawPolygons(data) {
 		pane: "alertsPane",
 		style: function (feature) {
 			return {
-				color: feature.properties.color || getColor(feature.properties.event), // Border color
+				color: getAlertStrokeColor(feature), // Border color
 				weight: feature.properties.size.extra || (size - (change + 2)), // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				//fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
