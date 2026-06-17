@@ -14,6 +14,9 @@ const default_config = {
 	},
 	mdsUrl: "https://placefiles.arch1010.dev/spc/mds.php?full=true",
 	alertSound: false,
+	disabledAlertTypes: [],
+	alertColors: {},
+	alertVariantColors: {},
 	radarTilemap: "n0q",
 	placefiles: [],
 	dev: {
@@ -148,6 +151,15 @@ const loadSettings = () => {
 
 	config.show.watches = true;
 	config.alertSound = alertSoundPref;
+	config.disabledAlertTypes = Array.isArray(savedSettings.disabledAlertTypes)
+		? savedSettings.disabledAlertTypes.filter((eventType) => typeof eventType === "string" && eventType.trim()).map((eventType) => eventType.trim())
+		: [];
+	config.alertColors = savedSettings.alertColors && typeof savedSettings.alertColors === "object"
+		? { ...savedSettings.alertColors }
+		: {};
+	config.alertVariantColors = savedSettings.alertVariantColors && typeof savedSettings.alertVariantColors === "object"
+		? { ...savedSettings.alertVariantColors }
+		: {};
 
 	// Mesoscale Discussions toggle
 	const mdsPref = savedSettings.show && savedSettings.show.mds !== undefined ? savedSettings.show.mds : true;
@@ -156,7 +168,19 @@ const loadSettings = () => {
 	config.show.mds = mdsPref;
 
 	// Placefiles
-	config.placefiles = savedSettings.placefiles || [];
+	config.placefiles = (savedSettings.placefiles || [])
+		.map((placefile) => {
+			if (typeof placefile === "string") {
+				return { url: placefile, enabled: true };
+			}
+			if (!placefile || typeof placefile.url !== "string") return null;
+			return {
+				...placefile,
+				url: placefile.url.trim(),
+				enabled: placefile.enabled !== false,
+			};
+		})
+		.filter((placefile) => placefile && placefile.url);
 
 	return savedSettings;
 };

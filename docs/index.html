@@ -53,6 +53,13 @@
 						aria-label="Open radar color map setting">
 						<i class="fas fa-palette" aria-hidden="true"></i>
 					</button>
+					<button
+						id="quick-placefile-layers"
+						class="icon-control"
+						title="Open placefile layer manager"
+						aria-label="Open placefile layer manager">
+						<i class="fas fa-file-alt" aria-hidden="true"></i>
+					</button>
 				</div>
 			</div>
 			<div class="bottom-status-right">
@@ -289,9 +296,47 @@
 							</label>
 							<input type="checkbox" id="mds-toggle" checked />
 						</div>
+						<div class="setting-item setting-item-column">
+							<label for="alert-type-filter-list">
+								Visible Warning, Statement & Watch Types
+								<span
+									class="info-icon"
+									title="Uncheck alert types here to hide their polygons and suppress marker alert sounds for that type.">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<div id="alert-type-filter-list" class="alert-type-filter-list"></div>
+							<div class="alert-type-filter-actions">
+								<button
+									id="alert-type-enable-all"
+									class="cmap-action-btn"
+									title="Enable every warning, statement, and watch type">
+									Enable All
+								</button>
+							</div>
+						</div>
+						<div class="setting-item setting-item-column">
+							<label for="alert-color-manager">
+								Alert Polygon Colors
+								<span
+									class="info-icon"
+									title="Change the default polygon colors for alert types and storm-specific overlay colors.">
+									<i class="fas fa-info-circle"></i>
+								</span>
+							</label>
+							<div id="alert-color-manager" class="alert-color-manager"></div>
+							<div class="alert-color-actions">
+								<button
+									id="alert-color-reset-all"
+									class="cmap-action-btn"
+									title="Reset all alert colors to defaults">
+									Reset Colors
+								</button>
+							</div>
+						</div>
 					</div>
-					<div class="settings-section">
-						<h3><i class="fas fa-file-alt"></i> Placefiles</h3>
+					<div class="settings-section" id="placefile-layer-section">
+						<h3><i class="fas fa-layer-group"></i> Placefile Layers</h3>
 						<div class="setting-item placefile-add-row">
 							<input
 								type="text"

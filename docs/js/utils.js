@@ -18,8 +18,7 @@ function convertToText(text) {
 
 // Define a function to get the color based on the type of the alert
 function getColor(text) {
-	const color = colorsArray[convertToText(text)];
-	return color || colorsArray["Default"];
+	return getConfiguredAlertColor(text);
 }
 
 const colorsArray = {
@@ -27,8 +26,8 @@ const colorsArray = {
 	"Tornado Warning": "#ff0000",
 	"Extreme Wind Warning": "#FF8C00",
 	"Severe Thunderstorm Warning": "#FFA500",
-	"Flash Flood Warning": "#8B0000",
-	"Flash Flood Statement": "#8B0000",
+	"Flash Flood Warning": "#00FF00",
+	"Flash Flood Statement": "#00FF00",
 	"Severe Weather Statement": "#00FFFF",
 	"Shelter In Place Warning": "#FA8072",
 	"Evacuation Immediate": "#7FFF00",
@@ -148,6 +147,8 @@ const colorsArray = {
 	"Snow Advisory": "#6699CC",
 	"Inland Tropical Storm Watch": "#F08080",
 	"Inland Hurricane Wind Watch": "#FFA07A",
+	"Tropical Cyclone Watch": "#F08080",
+	"Tropical Cyclone Warning": "#B22222",
 	"Wind Chill Warning": "#B0C4DE",
 	"Wind Chill Watch": "#5F9EA0",
 	"Wind Chill Advisory": "#AFEEEE",
@@ -283,11 +284,392 @@ function clearLayers(layerIds) {
 	try {
 		map.eachLayer((layer) => {
 			if (layer.options && layerIds.includes(layer.options.id)) {
+				unregisterMapHitStackLayer(layer);
 				map.removeLayer(layer);
 			}
 		});
 	} catch (e) {
 		console.warn(e);
+	}
+}
+
+function getAlertEventType(eventName) {
+	return String(eventName || "")
+		.replace(/\s+#\d+\s*$/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function normalizeAlertEventType(eventName) {
+	return getAlertEventType(eventName).toLowerCase();
+}
+
+function normalizeDisabledAlertTypes() {
+	const normalizedToLabel = new Map();
+	for (const eventType of config.disabledAlertTypes || []) {
+		const label = getAlertEventType(eventType);
+		if (!label) continue;
+		normalizedToLabel.set(normalizeAlertEventType(label), label);
+	}
+	config.disabledAlertTypes = Array.from(normalizedToLabel.values());
+	return new Set(normalizedToLabel.keys());
+}
+
+function isAlertEventTypeDisabled(eventName) {
+	const disabled = new Set((config.disabledAlertTypes || []).map(normalizeAlertEventType));
+	return disabled.has(normalizeAlertEventType(eventName));
+}
+
+function getFilteredAlertData(data) {
+	if (!data || !Array.isArray(data.features)) return data;
+	return {
+		...data,
+		features: data.features.filter((feature) => {
+			const eventType = feature?.properties?.watchEvent || feature?.properties?.event;
+			return !isAlertEventTypeDisabled(eventType);
+		}),
+	};
+}
+
+function getDefaultAlertTypeFilters() {
+	const alertColors = typeof colorsArray === "object" && colorsArray ? colorsArray : {};
+	return Object.keys(alertColors)
+		.filter((eventType) => /\b(warning|statement|watch)\b/i.test(eventType))
+		.filter((eventType) => eventType !== "Warning")
+		.sort((a, b) => {
+			const rank = (value) => {
+				const eventType = value.toLowerCase();
+				if (eventType.includes("warning")) return 0;
+				if (eventType.includes("statement")) return 1;
+				if (eventType.includes("watch")) return 2;
+				return 3;
+			};
+			const rankDiff = rank(a) - rank(b);
+			return rankDiff || a.localeCompare(b);
+		});
+}
+
+function getAlertTypeFilterOptions() {
+	const byKey = new Map();
+	for (const eventType of getDefaultAlertTypeFilters()) {
+		byKey.set(normalizeAlertEventType(eventType), getAlertEventType(eventType));
+	}
+
+	const activeFeatures = current_features && Array.isArray(current_features.features)
+		? current_features.features
+		: [];
+	for (const feature of activeFeatures) {
+		const eventType = getAlertEventType(feature?.properties?.watchEvent || feature?.properties?.event);
+		if (!eventType || !/\b(warning|statement|watch)\b/i.test(eventType)) continue;
+		byKey.set(normalizeAlertEventType(eventType), eventType);
+	}
+
+	return Array.from(byKey.values()).sort((a, b) => {
+		const rank = (value) => {
+			const eventType = value.toLowerCase();
+			if (eventType.includes("warning")) return 0;
+			if (eventType.includes("statement")) return 1;
+			if (eventType.includes("watch")) return 2;
+			return 3;
+		};
+		const rankDiff = rank(a) - rank(b);
+		return rankDiff || a.localeCompare(b);
+	});
+}
+
+function setAlertTypeEnabled(eventType, enabled) {
+	const label = getAlertEventType(eventType);
+	if (!label) return;
+
+	const disabledByKey = new Map();
+	for (const disabledType of config.disabledAlertTypes || []) {
+		const disabledLabel = getAlertEventType(disabledType);
+		if (disabledLabel) disabledByKey.set(normalizeAlertEventType(disabledLabel), disabledLabel);
+	}
+
+	if (enabled) {
+		disabledByKey.delete(normalizeAlertEventType(label));
+	} else {
+		disabledByKey.set(normalizeAlertEventType(label), label);
+	}
+
+	config.disabledAlertTypes = Array.from(disabledByKey.values());
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+	redrawPolygons();
+	renderAlertTypeFilters();
+}
+
+function renderAlertTypeFilters() {
+	const container = document.getElementById("alert-type-filter-list");
+	if (!container) return;
+
+	const disabled = normalizeDisabledAlertTypes();
+	const options = getAlertTypeFilterOptions();
+	container.innerHTML = "";
+
+	for (const eventType of options) {
+		const label = document.createElement("label");
+		label.className = "alert-type-filter-option";
+		label.title = eventType;
+
+		const checkbox = document.createElement("input");
+		checkbox.type = "checkbox";
+		checkbox.checked = !disabled.has(normalizeAlertEventType(eventType));
+		checkbox.addEventListener("change", () => {
+			setAlertTypeEnabled(eventType, checkbox.checked);
+		});
+
+		const text = document.createElement("span");
+		text.textContent = eventType;
+
+		label.appendChild(checkbox);
+		label.appendChild(text);
+		container.appendChild(label);
+	}
+
+	const enableAllButton = document.getElementById("alert-type-enable-all");
+	if (enableAllButton) {
+		enableAllButton.disabled = (config.disabledAlertTypes || []).length === 0;
+		enableAllButton.onclick = () => {
+			config.disabledAlertTypes = [];
+			localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+			redrawPolygons();
+			renderAlertTypeFilters();
+		};
+	}
+}
+
+const ALERT_VARIANT_COLOR_DEFAULTS = {
+	"tornado.considerable.base": {
+		label: "Tornado Warning - Considerable main",
+		defaultColor: "#ff00ff",
+	},
+	"tornado.catastrophic.base": {
+		label: "Tornado Warning - Catastrophic main",
+		defaultColor: "#ff00ff",
+	},
+	"tornado.observed.extra": {
+		label: "Tornado Warning - Observed overlay",
+		defaultColor: "#000000",
+	},
+	"tornado.catastrophic.extra": {
+		label: "Tornado Warning - Catastrophic overlay",
+		defaultColor: "#000000",
+	},
+	"severeThunderstorm.destructive.extra": {
+		label: "Severe Thunderstorm Warning - Destructive overlay",
+		defaultColor: "#ff0000",
+	},
+	"severeThunderstorm.considerable.extra": {
+		label: "Severe Thunderstorm Warning - Considerable overlay",
+		defaultColor: "#ff0000",
+	},
+	"severeThunderstorm.possible.extra": {
+		label: "Severe Thunderstorm Warning - Tornado possible overlay",
+		defaultColor: "#000000",
+	},
+};
+
+function normalizeHexColor(value) {
+	const color = String(value || "").trim();
+	const shortMatch = color.match(/^#?([0-9a-f]{3})$/i);
+	if (shortMatch) {
+		return "#" + shortMatch[1].split("").map((char) => char + char).join("").toLowerCase();
+	}
+	const fullMatch = color.match(/^#?([0-9a-f]{6})$/i);
+	return fullMatch ? "#" + fullMatch[1].toLowerCase() : null;
+}
+
+function getDefaultAlertColor(eventType) {
+	const label = convertToText(getAlertEventType(eventType));
+	return normalizeHexColor(colorsArray[label]) ||
+		normalizeHexColor(colorsArray[getAlertEventType(eventType)]) ||
+		normalizeHexColor(colorsArray.Default) ||
+		"#ffffff";
+}
+
+function getConfiguredAlertColor(eventType) {
+	const key = normalizeAlertEventType(eventType);
+	const configured = normalizeHexColor(config.alertColors && config.alertColors[key]);
+	return configured || getDefaultAlertColor(eventType);
+}
+
+function getAlertVariantColor(variantKey) {
+	const variant = ALERT_VARIANT_COLOR_DEFAULTS[variantKey];
+	const configured = normalizeHexColor(config.alertVariantColors && config.alertVariantColors[variantKey]);
+	return configured || normalizeHexColor(variant?.defaultColor) || "#ffffff";
+}
+
+function saveAlertColorSettings() {
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+}
+
+function setAlertColor(eventType, color) {
+	const key = normalizeAlertEventType(eventType);
+	const normalizedColor = normalizeHexColor(color);
+	if (!key || !normalizedColor) return;
+	if (!config.alertColors) config.alertColors = {};
+	const defaultColor = getDefaultAlertColor(eventType);
+	if (normalizedColor === defaultColor) {
+		delete config.alertColors[key];
+	} else {
+		config.alertColors[key] = normalizedColor;
+	}
+	saveAlertColorSettings();
+	redrawPolygons();
+	renderAlertColorManager();
+}
+
+function resetAlertColor(eventType) {
+	const key = normalizeAlertEventType(eventType);
+	if (config.alertColors && key) delete config.alertColors[key];
+	saveAlertColorSettings();
+	redrawPolygons();
+	renderAlertColorManager();
+}
+
+function setAlertVariantColor(variantKey, color) {
+	const normalizedColor = normalizeHexColor(color);
+	const variant = ALERT_VARIANT_COLOR_DEFAULTS[variantKey];
+	if (!variant || !normalizedColor) return;
+	if (!config.alertVariantColors) config.alertVariantColors = {};
+	const defaultColor = normalizeHexColor(variant.defaultColor);
+	if (normalizedColor === defaultColor) {
+		delete config.alertVariantColors[variantKey];
+	} else {
+		config.alertVariantColors[variantKey] = normalizedColor;
+	}
+	saveAlertColorSettings();
+	redrawPolygons();
+	renderAlertColorManager();
+}
+
+function resetAlertVariantColor(variantKey) {
+	if (config.alertVariantColors) delete config.alertVariantColors[variantKey];
+	saveAlertColorSettings();
+	redrawPolygons();
+	renderAlertColorManager();
+}
+
+function getAlertColorOptions() {
+	const byKey = new Map();
+	for (const eventType of Object.keys(colorsArray)) {
+		if (eventType === "Default") continue;
+		byKey.set(normalizeAlertEventType(eventType), getAlertEventType(eventType));
+	}
+
+	const activeFeatures = current_features && Array.isArray(current_features.features)
+		? current_features.features
+		: [];
+	for (const feature of activeFeatures) {
+		const eventType = getAlertEventType(feature?.properties?.watchEvent || feature?.properties?.event);
+		if (!eventType) continue;
+		byKey.set(normalizeAlertEventType(eventType), eventType);
+	}
+
+	return Array.from(byKey.values()).sort((a, b) => {
+		const rank = (value) => {
+			const eventType = value.toLowerCase();
+			if (eventType.includes("warning")) return 0;
+			if (eventType.includes("statement")) return 1;
+			if (eventType.includes("watch")) return 2;
+			if (eventType.includes("advisory")) return 3;
+			if (eventType.includes("outlook")) return 4;
+			return 5;
+		};
+		const rankDiff = rank(a) - rank(b);
+		return rankDiff || a.localeCompare(b);
+	});
+}
+
+function createAlertColorRow({ label, value, defaultValue, onChange, onReset }) {
+	const row = document.createElement("div");
+	row.className = "alert-color-row";
+
+	const picker = document.createElement("input");
+	picker.type = "color";
+	picker.value = value;
+	picker.title = label;
+	picker.addEventListener("change", () => onChange(picker.value));
+
+	const name = document.createElement("span");
+	name.className = "alert-color-name";
+	name.textContent = label;
+	name.title = label;
+
+	const colorText = document.createElement("span");
+	colorText.className = "alert-color-value";
+	colorText.textContent = value;
+
+	const resetButton = document.createElement("button");
+	resetButton.type = "button";
+	resetButton.className = "alert-color-reset";
+	resetButton.innerHTML = '<i class="fas fa-undo"></i>';
+	resetButton.title = "Reset to " + defaultValue;
+	resetButton.setAttribute("aria-label", "Reset " + label + " color");
+	resetButton.addEventListener("click", onReset);
+
+	row.appendChild(picker);
+	row.appendChild(name);
+	row.appendChild(colorText);
+	row.appendChild(resetButton);
+	return row;
+}
+
+function renderAlertColorManager() {
+	const container = document.getElementById("alert-color-manager");
+	if (!container) return;
+	container.innerHTML = "";
+
+	const baseSection = document.createElement("div");
+	baseSection.className = "alert-color-section";
+	const baseTitle = document.createElement("div");
+	baseTitle.className = "alert-color-section-title";
+	baseTitle.textContent = "Base Alert Types";
+	baseSection.appendChild(baseTitle);
+
+	for (const eventType of getAlertColorOptions()) {
+		baseSection.appendChild(createAlertColorRow({
+			label: eventType,
+			value: getConfiguredAlertColor(eventType),
+			defaultValue: getDefaultAlertColor(eventType),
+			onChange: (color) => setAlertColor(eventType, color),
+			onReset: () => resetAlertColor(eventType),
+		}));
+	}
+
+	const variantSection = document.createElement("div");
+	variantSection.className = "alert-color-section";
+	const variantTitle = document.createElement("div");
+	variantTitle.className = "alert-color-section-title";
+	variantTitle.textContent = "Storm Variant Overlays";
+	variantSection.appendChild(variantTitle);
+
+	for (const [variantKey, variant] of Object.entries(ALERT_VARIANT_COLOR_DEFAULTS)) {
+		variantSection.appendChild(createAlertColorRow({
+			label: variant.label,
+			value: getAlertVariantColor(variantKey),
+			defaultValue: normalizeHexColor(variant.defaultColor),
+			onChange: (color) => setAlertVariantColor(variantKey, color),
+			onReset: () => resetAlertVariantColor(variantKey),
+		}));
+	}
+
+	container.appendChild(baseSection);
+	container.appendChild(variantSection);
+
+	const resetAllButton = document.getElementById("alert-color-reset-all");
+	if (resetAllButton) {
+		const hasCustomColors = Object.keys(config.alertColors || {}).length > 0 ||
+			Object.keys(config.alertVariantColors || {}).length > 0;
+		resetAllButton.disabled = !hasCustomColors;
+		resetAllButton.onclick = () => {
+			config.alertColors = {};
+			config.alertVariantColors = {};
+			saveAlertColorSettings();
+			redrawPolygons();
+			renderAlertColorManager();
+		};
 	}
 }
 
@@ -374,12 +756,45 @@ function drawPolygons(data) {
 		return 0;
 	}
 
+	// Draw lower-priority alerts first so tornado warnings stay visually on top.
+	function getRenderPriority(feature) {
+		const evt = ((feature?.properties?.event || "") + "").toLowerCase();
+
+		if (evt.includes("tornado warning")) return 40;
+		if (evt.includes("severe thunderstorm warning")) return 30;
+		if (evt.includes("warning")) return 20;
+		if (evt.includes("statement")) return 15;
+		if (evt.includes("watch")) return 10;
+		return 0;
+	}
+
 	// Keep watches and warnings separate when deduping
 	function dedupeCategory(eventType) {
 		const evt = (eventType || "").toLowerCase();
 		if (evt.includes("watch")) return `watch:${eventType}`;
 		if (evt.includes("warning")) return `warning:${eventType}`;
 		return `other:${eventType}`;
+	}
+
+	function getAlertDisplayName(feature, tag) {
+		const event = feature?.properties?.event || "Weather Alert";
+		const eventName = event.toLowerCase();
+		const cleanTag = String(tag || "").trim().toLowerCase();
+		const shouldPrefix = cleanTag &&
+			cleanTag !== "n/a" &&
+			cleanTag !== "na" &&
+			cleanTag !== "none" &&
+			!eventName.includes("watch");
+
+		return shouldPrefix ? `${cleanTag.toTitleCase()} ${event}` : event;
+	}
+
+	function getAlertStrokeColor(feature) {
+		return feature?.properties?.appColor ||
+			getColor(feature?.properties?.event) ||
+			feature?.properties?.color ||
+			feature?.properties?.watchColor ||
+			colorsArray.Default;
 	}
 
 	// Always clear previous alert layers so expired alerts disappear
@@ -451,19 +866,19 @@ function drawPolygons(data) {
 
 		let newFeature = structuredClone(feature);
 		let pushFeature = false;
-		feature.properties.newName = `${tag.toTitleCase()} ${feature.properties.event}`;
+		feature.properties.newName = getAlertDisplayName(feature, tag);
 		if (eventName.includes("tornado")) {
 			switch (tag) {
 				case "considerable":
-					feature.properties.color = "#ff00ff";
+					feature.properties.appColor = getAlertVariantColor("tornado.considerable.base");
 					break;
 				case "catastrophic":
-					feature.properties.color = "#ff00ff";
-					newFeature.properties.color = "#000000";
+					feature.properties.appColor = getAlertVariantColor("tornado.catastrophic.base");
+					newFeature.properties.appColor = getAlertVariantColor("tornado.catastrophic.extra");
 					pushFeature = true;
 					break;
 				case "observed":
-					newFeature.properties.color = "#000000";
+					newFeature.properties.appColor = getAlertVariantColor("tornado.observed.extra");
 					pushFeature = true;
 					break;
 				default:
@@ -472,16 +887,16 @@ function drawPolygons(data) {
 		} else if (eventName.includes("severe th")) {
 			switch (tag) {
 				case "destructive":
-					newFeature.properties.color = "#ff0000";
+					newFeature.properties.appColor = getAlertVariantColor("severeThunderstorm.destructive.extra");
 					//newfeature.properties.size.border = size - change;
 					pushFeature = true;
 					break;
 				case "considerable":
-					newFeature.properties.color = "#ff0000";
+					newFeature.properties.appColor = getAlertVariantColor("severeThunderstorm.considerable.extra");
 					pushFeature = true;
 					break;
 				case "possible":
-					newFeature.properties.color = "#000000";
+					newFeature.properties.appColor = getAlertVariantColor("severeThunderstorm.possible.extra");
 					pushFeature = true;
 					break;
 				default:
@@ -535,13 +950,14 @@ function drawPolygons(data) {
 		pane: "alertsPane",
 		style: function (feature) {
 			return {
-				color: feature.properties.color || getColor(feature.properties.event), // Border color
+				color: getAlertStrokeColor(feature), // Border color
 				weight: feature.properties.size.polygon || size, // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
 			};
 		},
 		onEachFeature: function (feature, layer) {
+			const props = feature.properties || {};
 			if (feature.properties) {
 				layer.bindPopup(getPopupText(feature), { pane: "alertsPopupPane" });
 			}
@@ -549,6 +965,11 @@ function drawPolygons(data) {
 			layer.on("popupopen", function () {
 				console.log("Popup opened for feature:", JSON.stringify(feature));
 				window.cachedAlertText = getAlertText(feature);
+			});
+			registerMapHitStackLayer(layer, {
+				groupId: "weather-alerts",
+				kind: "Alert",
+				label: props.newName || props.event || "Weather Alert",
 			});
 		},
 		id: "weather-alerts",
@@ -560,7 +981,7 @@ function drawPolygons(data) {
 		pane: "alertsPane",
 		style: function (feature) {
 			return {
-				color: feature.properties.color || getColor(feature.properties.event), // Border color
+				color: getAlertStrokeColor(feature), // Border color
 				weight: feature.properties.size.extra || (size - (change + 2)), // Border width
 				opacity: config.opacity.polygon, // Outer border opacity
 				//fillOpacity: config.opacity.polygon_fill, // Polygon fill opacity
@@ -645,7 +1066,7 @@ function drawPolygons(data) {
 function redrawPolygons() {
 	try {
 		if (current_features.length <= 0) updateWeatherAlerts();
-		else drawPolygons(current_features);
+		else drawPolygons(getFilteredAlertData(current_features));
 	} catch (e) {}
 }
 
@@ -821,6 +1242,328 @@ function isPointInPolygon(lat, lng, polygon) {
 	return inside;
 }
 
+window.mapHitStackItems = window.mapHitStackItems || [];
+window.mapHitStackState = window.mapHitStackState || null;
+let mapHitStackOrder = 0;
+
+function registerMapHitStackLayer(layer, options) {
+	if (!layer || typeof window === "undefined") return;
+	options = options || {};
+	unregisterMapHitStackLayer(layer);
+
+	const item = {
+		layer,
+		groupId: options.groupId || "",
+		kind: options.kind || "Layer",
+		label: options.label || getMapHitStackLayerLabel(layer),
+		order: ++mapHitStackOrder,
+	};
+
+	window.mapHitStackItems.push(item);
+	layer.on("click", function (event) {
+		openMapHitStackAt(event.latlng, event.originalEvent);
+	});
+}
+
+function unregisterMapHitStackLayer(layer) {
+	if (!layer || typeof window === "undefined" || !Array.isArray(window.mapHitStackItems)) return;
+
+	if (typeof layer.eachLayer === "function") {
+		layer.eachLayer((childLayer) => unregisterMapHitStackLayer(childLayer));
+	}
+	window.mapHitStackItems = window.mapHitStackItems.filter((item) => item.layer !== layer);
+}
+
+function refreshMapHitStackOrderForLayer(layer) {
+	if (!layer || typeof window === "undefined" || !Array.isArray(window.mapHitStackItems)) return;
+	if (typeof layer.eachLayer === "function") {
+		layer.eachLayer((childLayer) => refreshMapHitStackOrderForLayer(childLayer));
+	}
+	const item = window.mapHitStackItems.find((entry) => entry.layer === layer);
+	if (item) item.order = ++mapHitStackOrder;
+}
+
+function getMapHitStackLayerLabel(layer) {
+	const props = layer?.feature?.properties || {};
+	return props.newName || props.event || props.title || props.name || "Map Layer";
+}
+
+function getMapHitStackPaneZIndex(layer) {
+	const paneName = layer?.options?.pane;
+	const pane = (paneName && map.getPane(paneName)) || layer?._pane;
+	const zIndex = pane ? parseInt(pane.style.zIndex || window.getComputedStyle(pane).zIndex, 10) : 0;
+	return Number.isFinite(zIndex) ? zIndex : 0;
+}
+
+function isMapHitStackLayerVisible(layer) {
+	try {
+		if (!layer || !map || !map.hasLayer(layer)) return false;
+	} catch (e) {
+		return false;
+	}
+	return !!(layer.getPopup && layer.getPopup());
+}
+
+function mapPointFromCoord(coord) {
+	if (!Array.isArray(coord) || coord.length < 2) return null;
+	return map.latLngToLayerPoint(L.latLng(coord[1], coord[0]));
+}
+
+function distanceToSegment(point, start, end) {
+	if (!point || !start || !end) return Infinity;
+	const dx = end.x - start.x;
+	const dy = end.y - start.y;
+	if (dx === 0 && dy === 0) return point.distanceTo(start);
+	const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+	return point.distanceTo(L.point(start.x + t * dx, start.y + t * dy));
+}
+
+function isPointNearLine(latlng, coordinates, tolerancePx) {
+	if (!Array.isArray(coordinates) || coordinates.length < 2) return false;
+	const clickPoint = map.latLngToLayerPoint(latlng);
+	for (let i = 0; i < coordinates.length - 1; i++) {
+		if (distanceToSegment(clickPoint, mapPointFromCoord(coordinates[i]), mapPointFromCoord(coordinates[i + 1])) <= tolerancePx) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function isLatLngInPolygonGeometry(latlng, coordinates) {
+	if (!Array.isArray(coordinates) || coordinates.length === 0) return false;
+	if (!isPointInPolygon(latlng.lat, latlng.lng, coordinates[0])) return false;
+
+	for (let i = 1; i < coordinates.length; i++) {
+		if (isPointInPolygon(latlng.lat, latlng.lng, coordinates[i])) return false;
+	}
+	return true;
+}
+
+function getPointHitTolerance(layer) {
+	const props = layer?.feature?.properties || {};
+	if (props.iconElements && props.iconElements.length) {
+		return Math.max(18, ...props.iconElements.map((el) => Math.max(el.width || 0, el.height || 0) / 2 + Math.abs(el.xOff || 0) + Math.abs(el.yOff || 0)));
+	}
+	if (props["marker-type"] === "text") return Math.max(24, String(props.name || "").length * 4);
+	if (layer && typeof layer.getRadius === "function") return layer.getRadius() + 8;
+	return 18;
+}
+
+function doesMapHitStackItemContainLatLng(item, latlng) {
+	const layer = item.layer;
+	if (!isMapHitStackLayerVisible(layer)) return false;
+
+	if (layer.getLatLng && !layer.feature?.geometry) {
+		const point = map.latLngToLayerPoint(latlng);
+		const markerPoint = map.latLngToLayerPoint(layer.getLatLng());
+		return point.distanceTo(markerPoint) <= getPointHitTolerance(layer);
+	}
+
+	const geometry = layer.feature && layer.feature.geometry;
+	if (!geometry || !geometry.coordinates) return false;
+	const type = geometry.type;
+	const tolerance = Math.max(8, ((layer.options && layer.options.weight) || 2) + 6);
+
+	if (type === "Point") {
+		const featurePoint = mapPointFromCoord(geometry.coordinates);
+		return featurePoint && map.latLngToLayerPoint(latlng).distanceTo(featurePoint) <= getPointHitTolerance(layer);
+	}
+	if (type === "MultiPoint") {
+		return geometry.coordinates.some((coord) => {
+			const featurePoint = mapPointFromCoord(coord);
+			return featurePoint && map.latLngToLayerPoint(latlng).distanceTo(featurePoint) <= getPointHitTolerance(layer);
+		});
+	}
+	if (type === "LineString") return isPointNearLine(latlng, geometry.coordinates, tolerance);
+	if (type === "MultiLineString") return geometry.coordinates.some((line) => isPointNearLine(latlng, line, tolerance));
+	if (type === "Polygon") return isLatLngInPolygonGeometry(latlng, geometry.coordinates);
+	if (type === "MultiPolygon") return geometry.coordinates.some((polygon) => isLatLngInPolygonGeometry(latlng, polygon));
+
+	return false;
+}
+
+function collectMapHitStackItems(latlng) {
+	if (!Array.isArray(window.mapHitStackItems)) return [];
+
+	window.mapHitStackItems = window.mapHitStackItems.filter((item) => isMapHitStackLayerVisible(item.layer));
+	const seen = new Set();
+	return window.mapHitStackItems
+		.filter((item) => {
+			if (!doesMapHitStackItemContainLatLng(item, latlng)) return false;
+			const stamp = L.stamp(item.layer);
+			if (seen.has(stamp)) return false;
+			seen.add(stamp);
+			return true;
+		})
+		.sort((a, b) => {
+			const paneDiff = getMapHitStackPaneZIndex(b.layer) - getMapHitStackPaneZIndex(a.layer);
+			return paneDiff || b.order - a.order;
+		});
+}
+
+function getOrCreateMapHitStackControl() {
+	let control = document.getElementById("map-hit-stack-control");
+	if (control) return control;
+
+	control = document.createElement("div");
+	control.id = "map-hit-stack-control";
+	control.innerHTML = `
+		<button class="map-hit-stack-btn" data-stack-action="prev" title="Previous overlapping item" aria-label="Previous overlapping item">
+			<i class="fas fa-chevron-left"></i>
+		</button>
+		<button class="map-hit-stack-main" data-stack-action="next" title="Next overlapping item" aria-label="Next overlapping item">
+			<span class="map-hit-stack-title"></span>
+			<span class="map-hit-stack-count"></span>
+		</button>
+		<button class="map-hit-stack-btn" data-stack-action="next" title="Next overlapping item" aria-label="Next overlapping item">
+			<i class="fas fa-chevron-right"></i>
+		</button>
+		<button class="map-hit-stack-close" data-stack-action="close" title="Close selector" aria-label="Close selector">
+			<i class="fas fa-times"></i>
+		</button>`;
+
+	control.addEventListener("click", (event) => {
+		const button = event.target.closest("[data-stack-action]");
+		if (!button) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const action = button.dataset.stackAction;
+		if (action === "close") {
+			hideMapHitStackControl(true);
+		} else if (action === "prev") {
+			cycleMapHitStack(-1);
+		} else {
+			cycleMapHitStack(1);
+		}
+	});
+
+	let swipeStartX = null;
+	control.addEventListener("pointerdown", (event) => {
+		swipeStartX = event.clientX;
+	});
+	control.addEventListener("pointerup", (event) => {
+		if (swipeStartX === null) return;
+		const deltaX = event.clientX - swipeStartX;
+		swipeStartX = null;
+		if (Math.abs(deltaX) < 36) return;
+		cycleMapHitStack(deltaX < 0 ? 1 : -1);
+	});
+	control.addEventListener("wheel", (event) => {
+		if (!window.mapHitStackState) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+		if (Math.abs(delta) < 1) return;
+		cycleMapHitStack(delta > 0 ? 1 : -1);
+	}, { passive: false });
+
+	document.body.appendChild(control);
+	return control;
+}
+
+function renderMapHitStackControl() {
+	const state = window.mapHitStackState;
+	const control = getOrCreateMapHitStackControl();
+	if (!state || state.items.length <= 1) {
+		control.style.display = "none";
+		return;
+	}
+
+	const item = state.items[state.index];
+	control.querySelector(".map-hit-stack-title").textContent = `${item.kind}: ${item.label || getMapHitStackLayerLabel(item.layer)}`;
+	control.querySelector(".map-hit-stack-count").textContent = `${state.index + 1} / ${state.items.length}`;
+	control.style.display = "flex";
+}
+
+function openMapHitStackItem(index) {
+	const state = window.mapHitStackState;
+	if (!state || state.items.length === 0) return;
+	state.index = (index + state.items.length) % state.items.length;
+	const item = state.items[state.index];
+	window.mapHitStackCurrentLayer = item.layer;
+
+	try {
+		if (item.layer.getPopup && item.layer.getPopup()) {
+			window.mapHitStackSuppressPopupCloseUntil = Date.now() + 350;
+			item.layer.openPopup(state.latlng);
+			setTimeout(() => {
+				if (Date.now() >= (window.mapHitStackSuppressPopupCloseUntil || 0)) {
+					window.mapHitStackSuppressPopupCloseUntil = 0;
+				}
+			}, 400);
+		}
+	} catch (e) {
+		window.mapHitStackSuppressPopupCloseUntil = 0;
+		console.warn("Unable to open stacked map popup:", e);
+	}
+	renderMapHitStackControl();
+}
+
+function cycleMapHitStack(delta) {
+	const state = window.mapHitStackState;
+	if (!state) return;
+	openMapHitStackItem(state.index + delta);
+}
+
+function hideMapHitStackControl(closePopup) {
+	window.mapHitStackState = null;
+	window.mapHitStackCurrentLayer = null;
+	const control = document.getElementById("map-hit-stack-control");
+	if (control) control.style.display = "none";
+	if (closePopup) {
+		try { map.closePopup(); } catch (e) { }
+	}
+}
+
+function openMapHitStackAt(latlng, originalEvent) {
+	if (!latlng) return false;
+	const items = collectMapHitStackItems(latlng);
+	if (items.length === 0) {
+		hideMapHitStackControl();
+		return false;
+	}
+
+	if (originalEvent && typeof L !== "undefined" && L.DomEvent) {
+		L.DomEvent.stop(originalEvent);
+	}
+
+	window.mapHitStackState = {
+		items,
+		index: 0,
+		latlng,
+	};
+	openMapHitStackItem(0);
+	return true;
+}
+
+function initMapHitStack() {
+	if (typeof map === "undefined" || !map || window.mapHitStackInitialized) return;
+	window.mapHitStackInitialized = true;
+
+	map.on("click", (event) => {
+		const clickTarget = event && event.originalEvent ? event.originalEvent.target : null;
+		if (clickTarget && typeof clickTarget.closest === "function" && clickTarget.closest(".leaflet-popup-pane, #map-hit-stack-control")) {
+			return;
+		}
+		openMapHitStackAt(event.latlng, event.originalEvent);
+	});
+	map.on("movestart zoomstart", () => hideMapHitStackControl());
+	map.on("popupclose", (event) => {
+		const closedSource = event?.popup?._source || event?.layer;
+		if (window.mapHitStackState && closedSource && closedSource !== window.mapHitStackCurrentLayer) return;
+		if (Date.now() < (window.mapHitStackSuppressPopupCloseUntil || 0)) return;
+		hideMapHitStackControl();
+	});
+	document.addEventListener("keydown", (event) => {
+		if (!window.mapHitStackState) return;
+		if (event.key === "Escape") hideMapHitStackControl();
+		if (event.key === "ArrowLeft") cycleMapHitStack(-1);
+		if (event.key === "ArrowRight") cycleMapHitStack(1);
+	});
+}
+
+document.addEventListener("mapLoaded", initMapHitStack);
+
 // Queue for TTS messages
 window.ttsQueue = window.ttsQueue || [];
 window.isSpeaking = window.isSpeaking || false;
@@ -941,6 +1684,20 @@ function playSound(markerName, textToSpeak) {
 window.placefileLayers = window.placefileLayers || {};
 const PLACEFILE_PROXY_BASE = "https://data.arch1010.dev/proxy?url=";
 
+function isPrivateNetworkUrl(url, baseUrl) {
+	try {
+		const parsed = new URL(url, baseUrl || (typeof window !== "undefined" ? window.location.href : undefined));
+		const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+		if (host === "localhost" || host === "::1") return true;
+		if (/^127\./.test(host) || /^169\.254\./.test(host)) return true;
+		if (/^10\./.test(host) || /^192\.168\./.test(host)) return true;
+		const match = host.match(/^172\.(\d+)\./);
+		return !!match && Number(match[1]) >= 16 && Number(match[1]) <= 31;
+	} catch (e) {
+		return false;
+	}
+}
+
 function parseGRLevelXPlacefile(text, sourceUrl, options) {
 	const features = [];
 	const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
@@ -976,6 +1733,10 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 		return currentColor[3] / 255;
 	}
 
+	function colorOpacity(color) {
+		return color[3] / 255;
+	}
+
 	function parseLabelParts(rawLabel) {
 		if (!rawLabel) return { title: "", description: "" };
 		// Unescape \n sequences
@@ -990,15 +1751,49 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 		};
 	}
 
+	function isValidLatLon(lat, lon) {
+		return Number.isFinite(lat) && Number.isFinite(lon) &&
+			lat >= -90 && lat <= 90 &&
+			lon >= -180 && lon <= 180;
+	}
+
+	function parseRgbaFields(fields) {
+		if (fields.length !== 3 && fields.length !== 4) return null;
+		const rgba = fields.map(Number);
+		if (!rgba.every((value) => Number.isInteger(value) && value >= 0 && value <= 255)) return null;
+		return [rgba[0], rgba[1], rgba[2], rgba.length === 4 ? rgba[3] : 255];
+	}
+
 	function parseCoordLine(line, coords) {
-		// Match all lat,lon pairs: number comma number (with optional spaces)
-		const pairRegex = /([-\d.]+)\s*,\s*([-\d.]+)/g;
-		let m;
-		while ((m = pairRegex.exec(line)) !== null) {
-			const lat = parseFloat(m[1]);
-			const lon = parseFloat(m[2]);
-			if (!isNaN(lat) && !isNaN(lon)) {
+		const numberMatches = line.match(/-?(?:\d+(?:\.\d*)?|\.\d+)/g);
+		if (!numberMatches || numberMatches.length < 2) return;
+
+		const values = numberMatches.map(Number);
+		const lat = values[0];
+		const lon = values[1];
+		const inlineColor = parseRgbaFields(values.slice(2));
+
+		if (inlineColor && isValidLatLon(lat, lon)) {
+			const hasOddFieldCount = values.length % 2 !== 0;
+			let hasInvalidTrailingPair = false;
+			for (let i = 2; i + 1 < values.length; i += 2) {
+				if (!isValidLatLon(values[i], values[i + 1])) {
+					hasInvalidTrailingPair = true;
+					break;
+				}
+			}
+			if (hasOddFieldCount || hasInvalidTrailingPair) {
 				coords.push([lat, lon]);
+				if (!cmdMeta.inlineColor) cmdMeta.inlineColor = inlineColor;
+				return;
+			}
+		}
+
+		for (let i = 0; i + 1 < values.length; i += 2) {
+			const pairLat = values[i];
+			const pairLon = values[i + 1];
+			if (isValidLatLon(pairLat, pairLon)) {
+				coords.push([pairLat, pairLon]);
 			}
 		}
 	}
@@ -1035,6 +1830,9 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 	function flushMultiLine() {
 		if (!mode) return;
 
+		const commandColor = cmdMeta.inlineColor || currentColor;
+		const commandOpacity = colorOpacity(commandColor);
+
 		if (mode === "line" && coords.length >= 2) {
 			const labelParts = parseLabelParts(cmdMeta.label);
 			const isClosedRing = coords.length >= 4 && (() => {
@@ -1049,11 +1847,11 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 					type: "Feature",
 					geometry: { type: "Polygon", coordinates: [ring] },
 					properties: {
-						stroke: rgbaToHex(...currentColor),
+						stroke: rgbaToHex(...commandColor),
 						"stroke-width": cmdMeta.width || 2,
-						"stroke-opacity": currentOpacity(),
-						fill: rgbaToHex(...currentColor),
-						"fill-opacity": Math.max(currentOpacity() * 0.15, 0.02),
+						"stroke-opacity": commandOpacity,
+						fill: rgbaToHex(...commandColor),
+						"fill-opacity": Math.max(commandOpacity * 0.15, 0.02),
 						name: cmdMeta.label || "",
 						title: labelParts.title,
 						description: labelParts.description,
@@ -1066,9 +1864,9 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 					type: "Feature",
 					geometry: { type: "LineString", coordinates: coords.map(c => [c[1], c[0]]) },
 					properties: {
-						stroke: rgbaToHex(...currentColor),
+						stroke: rgbaToHex(...commandColor),
 						"stroke-width": cmdMeta.width || 2,
-						"stroke-opacity": currentOpacity(),
+						"stroke-opacity": commandOpacity,
 						name: cmdMeta.label || "",
 						title: labelParts.title,
 						description: labelParts.description,
@@ -1080,15 +1878,16 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 			const ring = coords.map(c => [c[1], c[0]]);
 			if (ring.length > 0) ring.push(ring[0]); // close ring
 			const labelParts = parseLabelParts(cmdMeta.label);
+			const fillOpacity = cmdMeta.inlineColor ? commandOpacity : commandOpacity * 0.3;
 			features.push({
 				type: "Feature",
 				geometry: { type: "Polygon", coordinates: [ring] },
 				properties: {
-					stroke: rgbaToHex(...currentColor),
+					stroke: rgbaToHex(...commandColor),
 					"stroke-width": cmdMeta.width || 2,
-					"stroke-opacity": currentOpacity(),
-					fill: rgbaToHex(...currentColor),
-					"fill-opacity": currentOpacity() * 0.3,
+					"stroke-opacity": commandOpacity,
+					fill: rgbaToHex(...commandColor),
+					"fill-opacity": fillOpacity,
 					name: cmdMeta.label || "",
 					title: labelParts.title,
 					description: labelParts.description,
@@ -1103,11 +1902,11 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 					type: "Feature",
 					geometry: { type: "Polygon", coordinates: [tri] },
 					properties: {
-						stroke: rgbaToHex(...currentColor),
+						stroke: rgbaToHex(...commandColor),
 						"stroke-width": 1,
-						"stroke-opacity": currentOpacity(),
-						fill: rgbaToHex(...currentColor),
-						"fill-opacity": currentOpacity() * 0.5,
+						"stroke-opacity": commandOpacity,
+						fill: rgbaToHex(...commandColor),
+						"fill-opacity": commandOpacity * 0.5,
 						placefileCommand: "triangles",
 					},
 				});
@@ -1268,14 +2067,17 @@ function parseGRLevelXPlacefile(text, sourceUrl, options) {
 				let imgUrl = filename;
 				const isAbsolute = /^(https?:)?\/\//i.test(filename) || /^data:/i.test(filename) || /^blob:/i.test(filename);
 				if (baseUrl && !isAbsolute) {
-					const base = baseUrl.replace(/\/[^/]*$/, "/");
-					imgUrl = base + filename;
+					try {
+						imgUrl = new URL(filename, baseUrl).href;
+					} catch (e) {
+						const base = baseUrl.replace(/\/[^/]*$/, "/");
+						imgUrl = base + filename;
+					}
 				} else if (/^\/\//.test(filename)) {
 					imgUrl = "https:" + filename;
 				}
-				// Route through proxy
-				const proxiedUrl = PLACEFILE_PROXY_BASE + encodeURIComponent(imgUrl);
-				iconFiles[fileIndex] = { width: iconW, height: iconH, columns: numCols, rows: numRows, url: proxiedUrl };
+				const iconUrl = isPrivateNetworkUrl(imgUrl, baseUrl) ? imgUrl : PLACEFILE_PROXY_BASE + encodeURIComponent(imgUrl);
+				iconFiles[fileIndex] = { width: iconW, height: iconH, columns: numCols, rows: numRows, url: iconUrl };
 			}
 			continue;
 		}
@@ -1419,6 +2221,7 @@ async function drawPlacefile(url, text) {
 
 	// Remove old layer if it exists
 	if (existing && existing.layer) {
+		unregisterMapHitStackLayer(existing.layer);
 		try { map.removeLayer(existing.layer); } catch (e) { }
 	}
 
@@ -1452,13 +2255,14 @@ async function drawPlacefile(url, text) {
 		pane: targetPane,
 		interactive: true,
 		style: function (feature) {
+			const fillOpacity = feature.properties["fill-opacity"];
 			return {
 				color: feature.properties.stroke || feature.properties.color || "#3388ff",
 				weight: feature.properties["stroke-width"] || 2,
 				opacity: feature.properties["stroke-opacity"] || 1,
 				fillColor: feature.properties.fill || feature.properties.color || "#3388ff",
-				fill: false,
-				fillOpacity: 0,
+				fill: !isMDPlacefile && !!feature.properties.fill && fillOpacity !== 0,
+				fillOpacity: isMDPlacefile ? 0 : (fillOpacity !== undefined ? fillOpacity : 0),
 			};
 		},
 		pointToLayer: function (feature, latlng) {
@@ -1604,52 +2408,21 @@ async function drawPlacefile(url, text) {
 			layer.on("popupopen", function () {
 				window.cachedAlertText = fullText;
 			});
+			registerMapHitStackLayer(layer, {
+				groupId: "placefile-" + url,
+				kind: isMDPlacefile ? "Mesoscale Discussion" : "Placefile",
+				label: title || props.name || "Placefile Item",
+			});
 		},
 		id: "placefile-" + url,
 	}).addTo(map);
-
-	if (isMDPlacefile) {
-		if (window.mdsClickHandler) {
-			map.off("click", window.mdsClickHandler);
-		}
-
-		window.mdsClickTargets = [];
-		geoLayer.eachLayer(function (layer) {
-			if (!layer.feature || !layer.feature.geometry) return;
-			if (layer.feature.geometry.type !== "Polygon") return;
-			if ((layer.feature.properties || {}).placefileCommand !== "polygon") return;
-			window.mdsClickTargets.push({ layer: layer, geometry: layer.feature.geometry });
-		});
-
-		window.mdsClickHandler = function (event) {
-			if (!config.show.mds || !window.mdsClickTargets || window.mdsClickTargets.length === 0) return;
-			const clickTarget = event && event.originalEvent ? event.originalEvent.target : null;
-			if (clickTarget && typeof clickTarget.closest === "function") {
-				const higherPriorityHit = clickTarget.closest(
-					".leaflet-popup-pane, .leaflet-userMarkersPane-pane, .leaflet-radarIconsPane-pane, .leaflet-placefileMarkerPane-pane, .leaflet-alertsPane-pane"
-				);
-				if (higherPriorityHit) return;
-			}
-			for (let i = window.mdsClickTargets.length - 1; i >= 0; i--) {
-				const target = window.mdsClickTargets[i];
-				const geometry = target.geometry;
-				if (!geometry || geometry.type !== "Polygon" || !geometry.coordinates || !geometry.coordinates[0]) continue;
-				if (isPointInPolygon(event.latlng.lat, event.latlng.lng, geometry.coordinates[0])) {
-					try { target.layer.openPopup(); } catch (e) { }
-					try { target.layer.bringToFront(); } catch (e) { }
-					break;
-				}
-			}
-		};
-
-		map.on("click", window.mdsClickHandler);
-	}
 
 	if (existing) {
 		existing.layer = geoLayer;
 	} else {
 		window.placefileLayers[url] = { url: url, layer: geoLayer, intervalId: null, enabled: true, refreshMs: null };
 	}
+	applyPlacefileLayerOrder();
 
 	// Update refresh interval if the placefile specifies one
 	if (parsed.refreshSeconds && parsed.refreshSeconds > 0) {
@@ -1670,8 +2443,103 @@ async function drawPlacefile(url, text) {
 
 }
 
+function savePlacefileSettings() {
+	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+}
+
+function removePlacefileLayer(url) {
+	const entry = window.placefileLayers[url];
+	if (!entry) return;
+	if (entry.intervalId) clearInterval(entry.intervalId);
+	if (entry.layer) {
+		unregisterMapHitStackLayer(entry.layer);
+		try { map.removeLayer(entry.layer); } catch (e) { }
+	}
+	delete window.placefileLayers[url];
+}
+
+function applyPlacefileLayerOrder() {
+	const placefiles = config.placefiles || [];
+	for (const pf of placefiles) {
+		const entry = pf && pf.url ? window.placefileLayers[pf.url] : null;
+		if (!entry || !entry.layer || entry.enabled === false) continue;
+		if (!map.hasLayer(entry.layer)) continue;
+		if (typeof entry.layer.bringToFront === "function") {
+			entry.layer.bringToFront();
+			refreshMapHitStackOrderForLayer(entry.layer);
+		}
+	}
+}
+
+function movePlacefile(url, direction) {
+	const placefiles = config.placefiles || [];
+	const index = placefiles.findIndex(p => p.url === url);
+	if (index === -1) return;
+
+	const targetIndex = direction === "up" ? index + 1 : index - 1;
+	if (targetIndex < 0 || targetIndex >= placefiles.length) return;
+
+	const moved = placefiles[index];
+	placefiles[index] = placefiles[targetIndex];
+	placefiles[targetIndex] = moved;
+	savePlacefileSettings();
+	applyPlacefileLayerOrder();
+	renderPlacefileList();
+}
+
+function beginEditPlacefile(url) {
+	window.editingPlacefileUrl = url;
+	renderPlacefileList();
+}
+
+function cancelEditPlacefile() {
+	window.editingPlacefileUrl = null;
+	renderPlacefileList();
+}
+
+function editPlacefileUrl(oldUrl, newUrl) {
+	newUrl = String(newUrl || "").trim();
+	if (!newUrl) {
+		showNotification("Placefile URL required", "", "#ffaa00");
+		return;
+	}
+
+	const placefiles = config.placefiles || [];
+	const index = placefiles.findIndex(p => p.url === oldUrl);
+	if (index === -1) return;
+
+	if (newUrl !== oldUrl && placefiles.some(p => p.url === newUrl)) {
+		showNotification("Placefile already added: ", newUrl, "#ffaa00");
+		return;
+	}
+
+	const previous = placefiles[index];
+	const next = {
+		...previous,
+		url: newUrl,
+		enabled: previous.enabled !== false,
+		refreshMs: previous.refreshMs,
+	};
+
+	if (newUrl !== oldUrl) {
+		removePlacefileLayer(oldUrl);
+	}
+
+	placefiles[index] = next;
+	window.editingPlacefileUrl = null;
+	savePlacefileSettings();
+
+	if (next.enabled !== false) {
+		setUpPlacefile(newUrl, next.refreshMs);
+	} else {
+		applyPlacefileLayerOrder();
+	}
+	renderPlacefileList();
+}
+
 function fetchAndDrawPlacefile(url) {
 	const proxyUrl = PLACEFILE_PROXY_BASE + encodeURIComponent(url);
+	const isPrivateNetwork = isPrivateNetworkUrl(url);
 
 	let isCrossOrigin = true;
 	try {
@@ -1682,7 +2550,7 @@ function fetchAndDrawPlacefile(url) {
 		isCrossOrigin = false;
 	}
 
-	const candidates = isCrossOrigin ? [proxyUrl, url] : [url, proxyUrl];
+	const candidates = isPrivateNetwork ? [url] : (isCrossOrigin ? [proxyUrl, url] : [url, proxyUrl]);
 
 	const tryFetch = (index, lastError) => {
 		if (index >= candidates.length) {
@@ -1747,21 +2615,16 @@ function setUpPlacefile(url, refreshMs) {
 	const isBuiltIn = url === config.mdsUrl;
 	if (!isRawText && !isBuiltIn && !config.placefiles.some(p => p.url === url)) {
 		config.placefiles.push({ url: url, enabled: true, refreshMs: refreshMs });
-		localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+		savePlacefileSettings();
 	}
+	applyPlacefileLayerOrder();
 }
 
 function removePlacefile(url) {
-	const entry = window.placefileLayers[url];
-	if (entry) {
-		if (entry.intervalId) clearInterval(entry.intervalId);
-		if (entry.layer) {
-			try { map.removeLayer(entry.layer); } catch (e) { }
-		}
-		delete window.placefileLayers[url];
-	}
+	removePlacefileLayer(url);
 	config.placefiles = (config.placefiles || []).filter(p => p.url !== url);
-	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+	savePlacefileSettings();
+	applyPlacefileLayerOrder();
 	renderPlacefileList();
 }
 
@@ -1772,6 +2635,7 @@ function togglePlacefile(url, enabled) {
 		if (entry.layer) {
 			if (enabled) {
 				if (!map.hasLayer(entry.layer)) entry.layer.addTo(map);
+				applyPlacefileLayerOrder();
 			} else {
 				if (map.hasLayer(entry.layer)) map.removeLayer(entry.layer);
 			}
@@ -1784,7 +2648,10 @@ function togglePlacefile(url, enabled) {
 	}
 	const pf = (config.placefiles || []).find(p => p.url === url);
 	if (pf) pf.enabled = enabled;
-	localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+	if (entry) entry.enabled = enabled;
+	savePlacefileSettings();
+	applyPlacefileLayerOrder();
+	renderPlacefileList();
 }
 
 function renderPlacefileList() {
@@ -1792,9 +2659,41 @@ function renderPlacefileList() {
 	if (!container) return;
 	container.innerHTML = "";
 
-	for (const pf of (config.placefiles || [])) {
+	const placefiles = config.placefiles || [];
+	if (placefiles.length === 0) {
+		const empty = document.createElement("div");
+		empty.className = "placefile-empty";
+		empty.textContent = "No custom placefiles added.";
+		container.appendChild(empty);
+		return;
+	}
+
+	const header = document.createElement("div");
+	header.className = "placefile-layer-header";
+	header.innerHTML = "<span>Top Layer</span><span>Bottom Layer</span>";
+	container.appendChild(header);
+
+	const createActionButton = (iconClass, title, className, onClick, disabled) => {
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = "placefile-action " + (className || "");
+		button.innerHTML = '<i class="' + iconClass + '"></i>';
+		button.title = title;
+		button.setAttribute("aria-label", title);
+		button.disabled = !!disabled;
+		button.addEventListener("click", onClick);
+		return button;
+	};
+
+	for (let index = placefiles.length - 1; index >= 0; index--) {
+		const pf = placefiles[index];
+		if (!pf || !pf.url) continue;
+		const isEditing = window.editingPlacefileUrl === pf.url;
+
 		const item = document.createElement("div");
-		item.className = "placefile-item";
+		item.className = "placefile-item" +
+			(pf.enabled === false ? " is-disabled" : "") +
+			(isEditing ? " is-editing" : "");
 
 		const toggle = document.createElement("input");
 		toggle.type = "checkbox";
@@ -1802,20 +2701,89 @@ function renderPlacefileList() {
 		toggle.checked = pf.enabled !== false;
 		toggle.addEventListener("change", () => togglePlacefile(pf.url, toggle.checked));
 
-		const urlSpan = document.createElement("span");
-		urlSpan.className = "placefile-url";
-		urlSpan.textContent = pf.url;
-		urlSpan.title = pf.url;
+		const urlWrap = document.createElement("div");
+		urlWrap.className = "placefile-url-wrap";
 
-		const removeBtn = document.createElement("button");
-		removeBtn.className = "placefile-remove";
-		removeBtn.innerHTML = '<i class="fas fa-times"></i>';
-		removeBtn.title = "Remove placefile";
-		removeBtn.addEventListener("click", () => removePlacefile(pf.url));
+		if (isEditing) {
+			const urlInput = document.createElement("input");
+			urlInput.type = "text";
+			urlInput.className = "placefile-url-edit";
+			urlInput.value = pf.url;
+			urlInput.addEventListener("keydown", (event) => {
+				if (event.key === "Enter") editPlacefileUrl(pf.url, urlInput.value);
+				if (event.key === "Escape") cancelEditPlacefile();
+			});
+			urlWrap.appendChild(urlInput);
+			setTimeout(() => {
+				urlInput.focus();
+				urlInput.select();
+			}, 0);
+		} else {
+			const urlSpan = document.createElement("span");
+			urlSpan.className = "placefile-url";
+			urlSpan.textContent = pf.url;
+			urlSpan.title = pf.url;
+			urlWrap.appendChild(urlSpan);
+		}
+
+		const actions = document.createElement("div");
+		actions.className = "placefile-actions";
+
+		const upBtn = createActionButton(
+			"fas fa-arrow-up",
+			"Move layer up",
+			"placefile-move",
+			() => movePlacefile(pf.url, "up"),
+			index >= placefiles.length - 1 || isEditing
+		);
+
+		const downBtn = createActionButton(
+			"fas fa-arrow-down",
+			"Move layer down",
+			"placefile-move",
+			() => movePlacefile(pf.url, "down"),
+			index <= 0 || isEditing
+		);
+
+		actions.appendChild(upBtn);
+		actions.appendChild(downBtn);
+
+		if (isEditing) {
+			const input = urlWrap.querySelector(".placefile-url-edit");
+			actions.appendChild(createActionButton(
+				"fas fa-check",
+				"Save URL",
+				"placefile-save",
+				() => editPlacefileUrl(pf.url, input.value),
+				false
+			));
+			actions.appendChild(createActionButton(
+				"fas fa-times",
+				"Cancel edit",
+				"placefile-cancel",
+				cancelEditPlacefile,
+				false
+			));
+		} else {
+			actions.appendChild(createActionButton(
+				"fas fa-pen",
+				"Edit URL",
+				"placefile-edit",
+				() => beginEditPlacefile(pf.url),
+				false
+			));
+			actions.appendChild(createActionButton(
+				"fas fa-trash",
+				"Remove placefile",
+				"placefile-remove",
+				() => removePlacefile(pf.url),
+				false
+			));
+		}
 
 		item.appendChild(toggle);
-		item.appendChild(urlSpan);
-		item.appendChild(removeBtn);
+		item.appendChild(urlWrap);
+		item.appendChild(actions);
 		container.appendChild(item);
 	}
 }
@@ -1874,7 +2842,6 @@ function sponsorMePlease() {
 	linksContainer.style.marginLeft = "10px";
 
 	const links = [
-		{ text: "Buy Me a Coffee", url: "https://buymeacoffee.com/arch1010_" },
 		{ text: "Patreon", url: "https://patreon.com/Arch881010" },
 		{ text: "GitHub Sponsors", url: "https://github.com/sponsors/Arch881010" }
 	];

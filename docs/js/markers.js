@@ -235,7 +235,10 @@ function _userMarkerPopup(marker, idx) {
 }
 
 function drawUserMarkers() {
-    userMarkerLayers.forEach((m) => { try { map.removeLayer(m); } catch (_) {} });
+    userMarkerLayers.forEach((m) => {
+        if (typeof unregisterMapHitStackLayer === "function") unregisterMapHitStackLayer(m);
+        try { map.removeLayer(m); } catch (_) {}
+    });
     userMarkerLayers = [];
 
     const markers = _loadUserMarkers();
@@ -250,6 +253,13 @@ function drawUserMarkers() {
         const layer = L.marker([m.lat, m.lng], { icon, pane: 'userMarkersPane' })
             .addTo(map)
             .bindPopup(_userMarkerPopup(m, idx), { pane: 'alertsPopupPane' });
+        if (typeof registerMapHitStackLayer === "function") {
+            registerMapHitStackLayer(layer, {
+                groupId: "user-markers",
+                kind: "Marker",
+                label: m.name || "Marker",
+            });
+        }
         userMarkerLayers.push(layer);
     });
 }
