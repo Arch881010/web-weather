@@ -14,6 +14,7 @@ const default_config = {
 	},
 	mdsUrl: "https://placefiles.arch1010.dev/spc/mds.php?full=true",
 	alertSound: false,
+	includeUnofficialAlerts: false,
 	disabledAlertTypes: [],
 	alertColors: {},
 	alertVariantColors: {},
@@ -117,6 +118,13 @@ const loadSettings = () => {
 	const alertSoundToggle = document.getElementById("alert-sound-toggle");
 	if (alertSoundToggle) alertSoundToggle.checked = alertSoundPref;
 
+	const includeUnofficialAlertsPref =
+		savedSettings.includeUnofficialAlerts !== undefined
+			? savedSettings.includeUnofficialAlerts !== false
+			: default_config.includeUnofficialAlerts !== false;
+	const unofficialAlertsToggle = document.getElementById("unofficial-alerts-toggle");
+	if (unofficialAlertsToggle) unofficialAlertsToggle.checked = includeUnofficialAlertsPref;
+
 	// Radar hover tooltip toggle
 	const hoverPref = savedSettings.radarHoverEnabled === true;
 	const hoverToggle = document.getElementById("radar-hover-toggle");
@@ -151,6 +159,7 @@ const loadSettings = () => {
 
 	config.show.watches = true;
 	config.alertSound = alertSoundPref;
+	config.includeUnofficialAlerts = includeUnofficialAlertsPref;
 	config.disabledAlertTypes = Array.isArray(savedSettings.disabledAlertTypes)
 		? savedSettings.disabledAlertTypes.filter((eventType) => typeof eventType === "string" && eventType.trim()).map((eventType) => eventType.trim())
 		: [];
@@ -231,6 +240,11 @@ const saveSettings = () => {
 	// Alert sound preference
 	const alertSoundToggle = document.getElementById("alert-sound-toggle");
 	config.alertSound = alertSoundToggle ? alertSoundToggle.checked : false;
+
+	const unofficialAlertsToggle = document.getElementById("unofficial-alerts-toggle");
+	config.includeUnofficialAlerts = unofficialAlertsToggle
+		? unofficialAlertsToggle.checked
+		: config.includeUnofficialAlerts !== false;
 
 	// Radar hover tooltip preference
 	const hoverToggle = document.getElementById("radar-hover-toggle");

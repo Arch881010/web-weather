@@ -86,6 +86,24 @@ async function processAlertData(data, watchSource = "none") {
 	return data;
 }
 
+function buildAlertApiUrl() {
+	const params = [
+		"status=actual",
+		"urgency=Immediate,Expected,Future,Past,Unknown",
+	];
+	if (config.includeUnofficialAlerts !== false) {
+		params.push("drawn=include");
+	}
+
+	const baseUrl = String(config.api || "").trim();
+	let separator = "?";
+	if (baseUrl.includes("?")) {
+		separator = baseUrl.endsWith("?") || baseUrl.endsWith("&") ? "" : "&";
+	}
+
+	return `${baseUrl}${separator}${params.join("&")}`;
+}
+
 // Function to fetch and update weather alerts
 function updateWeatherAlerts() {
 	if (userSettings.opacity.polygon == 0) {
@@ -117,7 +135,7 @@ function updateWeatherAlerts() {
 		return;
 	}
 
-	const alertUrl = `${config.api}?status=actual&urgency=Immediate,Expected,Future,Past,Unknown`;
+	const alertUrl = buildAlertApiUrl();
 
 	fetch(alertUrl, {
 		headers: { "User-Agent": "WIP Web Weather App (admin@arch1010.dev)" },

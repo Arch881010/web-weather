@@ -125,6 +125,17 @@ document.addEventListener("DOMContentLoaded", function () {
 		});
 	}
 
+	const unofficialAlertsToggle = document.getElementById("unofficial-alerts-toggle");
+	if (unofficialAlertsToggle) {
+		unofficialAlertsToggle.addEventListener("change", () => {
+			config.includeUnofficialAlerts = unofficialAlertsToggle.checked;
+			localStorage.setItem("weatherAppSettings", JSON.stringify(config));
+			current_features = [];
+			window.timeUntilNextUpdate = 60;
+			updateWeatherAlerts();
+		});
+	}
+
 	const openSettingsBtn = document.getElementById("open-settings");
 	if (openSettingsBtn) {
 		openSettingsBtn.addEventListener("click", () => {
