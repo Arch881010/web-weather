@@ -480,10 +480,30 @@ function normalizeHexColor(value) {
 	return fullMatch ? "#" + fullMatch[1].toLowerCase() : null;
 }
 
-function getDefaultAlertColor(eventType) {
+function normalizeAlertColorValue(value) {
+	if (Array.isArray(value)) {
+		for (const entry of value) {
+			const normalized = normalizeAlertColorValue(entry);
+			if (normalized) return normalized;
+		}
+		return null;
+	}
+
+	const hex = normalizeHexColor(value);
+	if (hex) return hex;
+
+	const color = String(value || "").trim();
+	return /^(?:rgb|hsl)a?\([^)]+\)$/i.test(color) ? color : null;
+}
+
+function getAlertTableColor(eventType) {
 	const label = convertToText(getAlertEventType(eventType));
 	return normalizeHexColor(colorsArray[label]) ||
-		normalizeHexColor(colorsArray[getAlertEventType(eventType)]) ||
+		normalizeHexColor(colorsArray[getAlertEventType(eventType)]);
+}
+
+function getDefaultAlertColor(eventType) {
+	return getAlertTableColor(eventType) ||
 		normalizeHexColor(colorsArray.Default) ||
 		"#ffffff";
 }
@@ -492,6 +512,12 @@ function getConfiguredAlertColor(eventType) {
 	const key = normalizeAlertEventType(eventType);
 	const configured = normalizeHexColor(config.alertColors && config.alertColors[key]);
 	return configured || getDefaultAlertColor(eventType);
+}
+
+function getConfiguredOrTableAlertColor(eventType) {
+	const key = normalizeAlertEventType(eventType);
+	const configured = normalizeHexColor(config.alertColors && config.alertColors[key]);
+	return configured || getAlertTableColor(eventType);
 }
 
 function getAlertVariantColor(variantKey) {
@@ -790,11 +816,12 @@ function drawPolygons(data) {
 	}
 
 	function getAlertStrokeColor(feature) {
-		return feature?.properties?.appColor ||
-			getColor(feature?.properties?.event) ||
-			feature?.properties?.color ||
-			feature?.properties?.watchColor ||
-			colorsArray.Default;
+		return normalizeAlertColorValue(feature?.properties?.appColor) ||
+			getConfiguredOrTableAlertColor(feature?.properties?.event) ||
+			normalizeAlertColorValue(feature?.properties?.color) ||
+			normalizeAlertColorValue(feature?.properties?.watchColor) ||
+			normalizeHexColor(colorsArray.Default) ||
+			"#ffffff";
 	}
 
 	// Always clear previous alert layers so expired alerts disappear
@@ -911,7 +938,7 @@ function drawPolygons(data) {
 		if (pushFeature) {
 			feature.properties.size.border = size + change;
 			feature.properties.size.polygon = size;
-			feature.properties.size.extra = tag === "considerable" ? 1 : size - change;
+			feature.properties.size.extra = tag === "considerable" || tag === "possible" ? 1 : size - change;
 			newFeature.properties.size = feature.properties.size;
 			newFeature.properties.tag = tag;
 			alertExtras.features.push(newFeature);
