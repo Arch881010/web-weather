@@ -1,5 +1,5 @@
 {
     "number": "1.0a",
-    "time-updated": "Wed Jun 17 22:59:16 UTC 2026",
-    "recent-commit": "Added Color picker for alerts, toggle for alerts, layer manager (for placefiles), alert selection on multiple layers, and more (#44)"
+    "time-updated": "Tue Sep 15 15:21:57 UTC 2026",
+    "recent-commit": "Feat: Fix apikey issue & update layers."
 }
