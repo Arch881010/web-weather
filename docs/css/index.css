@@ -1150,7 +1150,6 @@ input:focus {
     background: #3366dd;
 }
 
-/* ── Confirm dialog overlay ── */
 #confirm-dialog-overlay {
     display: none;
     position: fixed;

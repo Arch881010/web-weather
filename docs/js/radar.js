@@ -631,8 +631,9 @@ function syncProductDropdownsToLevel(siteOverride = config.radarApi?.site) {
 function _buildRadarStatusHTML(scanTimeStr, product, site) {
     // Level badge reflects config.radarApi.level (set by the existing frontend Level 3/Level 2 toggle)
     const radarLevel = getRadarLevel();
-    const levelLabel = radarLevel === 3 ? "Level 3" : "Level 2";
-    const levelTitle = radarLevel === 3 ? "Level 3" : "Base Reflectivity (Level II)";
+    // const levelLabel = radarLevel === 3 ? "Level 3" : "Level 2"; TODO: Fix Level 2 processing 
+    const levelLabel = "Level 3";
+    const levelTitle = levelLabel;
     const levelTag = `<span class="status-level-badge" title="${levelTitle}">${levelLabel}</span>`;
     
     const products = getAvailableProductsForSite(site, radarLevel);
@@ -1169,5 +1170,4 @@ function updateRadarLayer(isAutomaticTick = false) {
     console.info("Radar layer updated.");
 }
 
-// ── Initialise ────────────────────────────────────────────────────────────────
 loadCustomColormaps();

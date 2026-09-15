@@ -2,7 +2,7 @@
 
 const default_config = {
 	opacity: {
-		radar: 0.75,
+		radar: 1,
 		polygon_fill: 0,
 		polygon: 1,
 		countyBorders: 0.01,

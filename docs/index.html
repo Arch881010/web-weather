@@ -9,6 +9,10 @@
 			rel="stylesheet"
 			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
 		<link rel="stylesheet" href="./css/index.css" />
+		<!-- MapLibre GL CS & JS -->
+		<link
+			href="https://api.tiles.mapbox.com/mapbox-gl-js/v1.5.0/mapbox-gl.css"
+			rel="stylesheet" />
 	</head>
 	<body>
 		<div id="loading-screen">
@@ -202,7 +206,7 @@
 							<label for="radar-data-level">Data Level</label>
 							<select id="radar-data-level">
 								<option value="3" selected>Level 3</option>
-								<option value="2">Level 2</option>
+								<!-- <option value="2">Level 2</option> -->
 							</select>
 						</div>
 						<div class="setting-item">
@@ -305,7 +309,9 @@
 									<i class="fas fa-info-circle"></i>
 								</span>
 							</label>
-							<div id="alert-type-filter-list" class="alert-type-filter-list"></div>
+							<div
+								id="alert-type-filter-list"
+								class="alert-type-filter-list"></div>
 							<div class="alert-type-filter-actions">
 								<button
 									id="alert-type-enable-all"
@@ -401,6 +407,7 @@
 		<!-- Looking for the code? https://github.com/Arch881010/web-weather -->
 		<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
 		<script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
+		<script src="https://unpkg.com/maplibre-gl@3.x.x/dist/maplibre-gl.js"></script>
 		<script src="./js/config.js"></script>
 		<script src="./js/prototypes.js"></script>
 		<script src="./js/utils.js"></script>
@@ -414,6 +421,8 @@
 		<script src="./js/taskbar.js"></script>
 		<script src="./js/alerts.js"></script>
 		<script src="./js/alertText.js"></script>
+		<!-- Leaflet MapLibre Integration Plugin -->
+		<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.20/leaflet-maplibre-gl.js"></script>
 		<script src="./js/map.js"></script>
 	</body>
 </html>

@@ -11,7 +11,7 @@ const mapLoadedEvent = new Event("mapLoaded", {
 // In case we are taking forever to load.
 setTimeout(() => {
 	const loadingScreenText = document.getElementById("loading-screen-text");
-	loadingScreenText.textContent = "Loading is taking longer than expected...\nTrying refreshing?";
+	loadingScreenText.textContent = "Loading is taking longer than expected...\nTry refreshing?";
 }, 60000);
 
 // Event listener to handle tab visibility change
