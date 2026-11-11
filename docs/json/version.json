@@ -1,5 +1,5 @@
 {
     "number": "1.0a",
-    "time-updated": "Tue Sep 15 15:21:57 UTC 2026",
-    "recent-commit": "Feat: Fix apikey issue & update layers."
+    "time-updated": "Wed Nov 11 01:05:47 UTC 2026",
+    "recent-commit": "(Patch): Alerts are delayed/blocked so we must stop fetching them."
 }
