@@ -77,7 +77,7 @@ async function processAlertData(data, watchSource = "none") {
 		});
 	}
 
-	await mergeWatchPolygons(data, watchSource);
+	//await mergeWatchPolygons(data, watchSource);
 	sortAlertPolygons(data);
 	current_features = data;
 	renderAlertTypeFilters();
